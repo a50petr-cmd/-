@@ -111,11 +111,12 @@ def format_vacancy_with_letter(profile: SearchProfile, s: ScoredVacancy) -> list
     v = s.vacancy
     letter = _cover_letter_for(profile, s)
     header = (
-        f"<b>📋 Сопроводительное</b> (score {s.score})\n"
-        f"<b>{html.escape(v.title)}</b> — {html.escape(v.company)}\n"
-        f"{v.url}\n\n"
+        f"📋 Сопроводительное (score {s.score})\n"
+        f"{v.title} — {v.company}\n"
+        f"{v.url}\n"
+        f"{'—' * 20}"
     )
-    return _chunk_pre(letter, header)
+    return _chunk_plain(header, letter)
 
 
 def notify_high_scores(
@@ -133,7 +134,7 @@ def notify_high_scores(
     if TELEGRAM_INCLUDE_COVER_LETTERS and profile:
         for s in high:
             for msg in format_vacancy_with_letter(profile, s):
-                if not send_message(msg):
+                if not send_message(msg, parse_mode=None):
                     log.warning("Не удалось отправить письмо для %s", s.vacancy.uid)
                     break
 
@@ -171,6 +172,6 @@ def send_pending_cover_letter(uid: str, profile: SearchProfile) -> bool:
     scored = _scored_from_pending(pending)
     ok = True
     for msg in format_vacancy_with_letter(profile, scored):
-        if not send_message(msg):
+        if not send_message(msg, parse_mode=None):
             ok = False
     return ok
