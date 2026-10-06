@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from job_agent.display_ru import display_keyword, humanize_score_rationale
 from job_agent.models import Vacancy
 from job_agent.profile import SearchProfile
 
 
 def generate_cover_letter(profile: SearchProfile, vacancy: Vacancy, score_rationale: str = "") -> str:
-    skills_line = ", ".join(profile.skills[:8]) if profile.skills else "мой стек из резюме"
+    if profile.skills:
+        skills_line = ", ".join(display_keyword(s) for s in profile.skills[:8])
+    else:
+        skills_line = "мой стек из резюме"
+    score_rationale = humanize_score_rationale(score_rationale)
     roles = ", ".join(profile.desired_roles[:2]) if profile.desired_roles else "инженерная роль"
     exp = (
         f"Опыт около {profile.experience_years} лет."
