@@ -125,7 +125,8 @@ def run_bot() -> None:
     token = get_bot_token()
     if not token:
         raise SystemExit(
-            "Set PRICE_BOT_TOKEN (recommended) or TELEGRAM_BOT_TOKEN in "
-            "/cursor/stores/self/internal/secrets.env for local runs."
+            "Set PRICE_BOT_TOKEN (recommended) or TELEGRAM_BOT_TOKEN in env, "
+            "or in {store}/internal/secrets.env "
+            "(set JOB_AGENT_STORE or PRICE_BOT_STORE to your store root)."
         )
     TelegramBot(token).run_polling()
