@@ -7,7 +7,7 @@ from price_bot.models import ComparisonResult, MatchedListing, Platform, Product
 from price_bot.platforms.ozon import OzonClient
 from price_bot.platforms.wildberries import FetchError, WildberriesClient
 from price_bot.platforms.yandex_market import YandexMarketClient
-from price_bot.url_parser import parse_product_url
+from price_bot.url_parser import fallback_search_query, parse_product_url
 
 _CLIENTS = {
     Platform.OZON: OzonClient(),
@@ -32,21 +32,32 @@ def compare_url(url: str, *, demo: bool | None = None) -> ComparisonResult:
     try:
         source = source_client.fetch_product(parsed.product_id, parsed.canonical_url)
         source.is_source = True
+        query = title_keywords(source.title)
     except FetchError as exc:
-        return ComparisonResult(
-            source=ProductListing(
-                platform=parsed.platform,
-                product_id=parsed.product_id,
-                title="Не удалось загрузить карточку исходного товара",
-                price_rub=None,
-                url=parsed.canonical_url,
-                is_source=True,
-            ),
-            matches=[],
-            errors=[str(exc)],
+        source = ProductListing(
+            platform=parsed.platform,
+            product_id=parsed.product_id,
+            title="Исходная карточка недоступна (цена и название могут отсутствовать)",
+            price_rub=None,
+            url=parsed.canonical_url,
+            is_source=True,
         )
-
-    query = title_keywords(source.title)
+        errors.append(str(exc))
+        query = fallback_search_query(url, parsed.product_id)
+        if not query.strip():
+            errors.append(
+                "Сопоставление на других площадках не выполнялось: не удалось получить "
+                "название товара для поиска."
+            )
+            return ComparisonResult(source=source, matches=[], errors=errors)
+        if query == parsed.product_id:
+            errors.append(
+                "Поиск на других площадках выполнен по артикулу из ссылки — совпадения могут быть неточными."
+            )
+        else:
+            errors.append(
+                "Исходная карточка недоступна — поиск на других площадках по тексту из URL ссылки."
+            )
     matches: list[MatchedListing] = []
 
     for platform in Platform:

@@ -22,6 +22,20 @@ def _host(url: str) -> str:
     return (urlparse(url).hostname or "").lower()
 
 
+def fallback_search_query(url: str, product_id: str) -> str:
+    """Search text when the source listing could not be loaded."""
+    raw = url.strip()
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    path = unquote(urlparse(raw).path or "")
+    m = re.search(r"/product/([\w\-]+)-\d{5,}", path, re.I)
+    if m:
+        slug = m.group(1).replace("-", " ").strip()
+        if len(slug) >= 3:
+            return slug
+    return product_id
+
+
 def parse_product_url(url: str) -> ParsedProductUrl:
     raw = url.strip()
     if not raw.startswith(("http://", "https://")):
