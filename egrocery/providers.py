@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Protocol
+
+from egrocery.concurrent_util import run_parallel
 
 from egrocery.cache import TtlCache
 from egrocery.clients import lavka as lavka_client
@@ -98,11 +99,21 @@ def search_offers_cached(
 
 
 def _provider_timeout_sec() -> float:
-    raw = os.environ.get("EGROCERY_PROVIDER_TIMEOUT_SEC", "12").strip()
+    raw = os.environ.get("EGROCERY_PROVIDER_TIMEOUT_SEC", "8").strip()
     try:
         return max(3.0, float(raw))
     except ValueError:
-        return 12.0
+        return 8.0
+
+
+def _basket_wall_timeout_sec(item_count: int) -> float:
+    raw = os.environ.get("EGROCERY_BASKET_MAX_SEC", "40").strip()
+    try:
+        cap = max(15.0, float(raw))
+    except ValueError:
+        cap = 40.0
+    per_item = _provider_timeout_sec() + 2.0
+    return min(cap, per_item * max(1, item_count))
 
 
 def search_all_providers(
@@ -111,22 +122,19 @@ def search_all_providers(
     services = [s for s in point.services_enabled if s in CLIENTS]
     if not services:
         return {}
-    timeout = _provider_timeout_sec()
+    wall = _provider_timeout_sec() + 5.0
+    jobs = {
+        s: (lambda svc=s: search_offers_cached(point, svc, query, limit=limit))
+        for s in services
+    }
+    raw = run_parallel(jobs, max_workers=min(3, len(services)), wall_timeout_sec=wall)
     out: dict[str, tuple[list[Offer], str | None]] = {}
-    with ThreadPoolExecutor(max_workers=min(3, len(services))) as pool:
-        futures = {
-            pool.submit(search_offers_cached, point, s, query, limit=limit): s
-            for s in services
-        }
-        for fut in as_completed(futures, timeout=timeout + 2):
-            service = futures[fut]
-            try:
-                out[service] = fut.result(timeout=1)
-            except Exception as exc:
-                logger.warning("%s parallel search failed: %s", service, exc)
-                out[service] = [], f"{service}: таймаут или ошибка"
     for service in services:
-        out.setdefault(service, ([], f"{service}: нет ответа"))
+        val = raw.get(service)
+        if val is None:
+            out[service] = [], f"{service}: таймаут или ошибка"
+        else:
+            out[service] = val
     return out
 
 
@@ -142,23 +150,20 @@ def fetch_prices_for_service(
     cells: dict[str, str] = {item.id: PLACEHOLDER for item in basket.items}
     if not basket.items:
         return cells
-    timeout = _provider_timeout_sec()
+    wall = _basket_wall_timeout_sec(len(basket.items))
 
     def one(item_id: str, query: str) -> tuple[str, str]:
         offers, _err = search_offers_cached(point, service, query, limit=8)
         best, _ = pick_cheapest_offer(offers)
         return item_id, _format_cell(best)
 
-    with ThreadPoolExecutor(max_workers=min(4, len(basket.items))) as pool:
-        futures = [
-            pool.submit(one, item.id, item.query) for item in basket.items
-        ]
-        try:
-            for fut in as_completed(futures, timeout=timeout * len(basket.items)):
-                item_id, cell = fut.result(timeout=1)
-                cells[item_id] = cell
-        except Exception as exc:
-            logger.warning("%s basket row fetch incomplete: %s", service, exc)
+    jobs = {
+        item.id: (lambda i=item: one(i.id, i.query)) for item in basket.items
+    }
+    raw = run_parallel(jobs, max_workers=min(4, len(basket.items)), wall_timeout_sec=wall)
+    for item_id, val in raw.items():
+        if val is not None:
+            cells[item_id] = val[1]
     return cells
 
 
@@ -206,20 +211,16 @@ def fetch_all_provider_prices(
     point: DeliveryPoint, basket: Basket
 ) -> dict[str, dict[str, str]]:
     keys = list(PROVIDER_FETCHERS.keys())
-    timeout = _provider_timeout_sec() * max(1, len(basket.items))
-
-    def run(key: str) -> tuple[str, dict[str, str]]:
-        return key, PROVIDER_FETCHERS[key](point, basket)
-
+    wall = _basket_wall_timeout_sec(len(basket.items)) + 5.0
+    jobs = {
+        key: (lambda k=key: (k, PROVIDER_FETCHERS[k](point, basket))) for key in keys
+    }
+    raw = run_parallel(jobs, max_workers=3, wall_timeout_sec=wall)
     out: dict[str, dict[str, str]] = {}
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(run, key): key for key in keys}
-        try:
-            for fut in as_completed(futures, timeout=timeout + 5):
-                key, cells = fut.result(timeout=1)
-                out[key] = cells
-        except Exception as exc:
-            logger.warning("basket provider fetch incomplete: %s", exc)
     for key in keys:
-        out.setdefault(key, {item.id: PLACEHOLDER for item in basket.items})
+        val = raw.get(key)
+        if val is None:
+            out[key] = {item.id: PLACEHOLDER for item in basket.items}
+        else:
+            out[key] = val[1]
     return out

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -21,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 MAX_MESSAGE_LEN = 4000
+BOT_BUILD = "2026-03-24-deadlock-fix"
+
+
+def _handler_max_sec() -> float:
+    raw = os.environ.get("EGROCERY_HANDLER_MAX_SEC", "55").strip()
+    try:
+        return max(10.0, float(raw))
+    except ValueError:
+        return 55.0
 
 
 class TelegramBot:
@@ -74,10 +85,14 @@ class TelegramBot:
         except Exception:
             logger.exception("failed to send error to chat_id=%s", chat_id)
 
+    def handle_ping(self, chat_id: int) -> None:
+        self.send_message(chat_id, f"pong ({BOT_BUILD}) — бот на связи.")
+
     def handle_start(self, chat_id: int) -> None:
         self.send_message(
             chat_id,
-            "Привет! Я сравниваю корзину для доставки (Samokat, Lavka, VkusVill).\n\n"
+            f"Привет! ({BOT_BUILD})\n"
+            "Я сравниваю корзину для доставки (Samokat, Lavka, VkusVill).\n\n"
             "1) /address — задайте адрес текстом или отправьте геопозицию 📍\n"
             "   Можно сразу: /address Электросталь, ул. …, д. …\n"
             "2) /basket — таблица цен для сохранённой точки доставки\n"
@@ -192,6 +207,9 @@ class TelegramBot:
 
         cmd, args = parse_bot_command(text)
 
+        if cmd == "/ping":
+            self.handle_ping(chat_id)
+            return
         if cmd == "/start":
             self.handle_start(chat_id)
             return
@@ -223,12 +241,41 @@ class TelegramBot:
             except Exception as exc:
                 self._reply_error(chat_id, exc)
 
+    def _dispatch_update(self, update: dict[str, Any]) -> None:
+        try:
+            self.handle_update(update)
+        except Exception as exc:
+            chat_id = None
+            msg = update.get("message") or update.get("edited_message") or {}
+            chat = msg.get("chat") or {}
+            if chat.get("id") is not None:
+                chat_id = int(chat["id"])
+            if chat_id is not None:
+                self._reply_error(chat_id, exc)
+            else:
+                logger.exception(
+                    "failed to handle update %s", update.get("update_id")
+                )
+
     def run_polling(self, *, timeout: int = 30) -> None:
-        logger.info("egrocery bot polling started")
+        try:
+            me = self._api("getMe")
+            logger.info(
+                "egrocery bot polling started as @%s build=%s",
+                me.get("username"),
+                BOT_BUILD,
+            )
+        except Exception:
+            logger.info("egrocery bot polling started build=%s", BOT_BUILD)
+        drop = os.environ.get("EGROCERY_DROP_PENDING", "1").strip().lower()
+        drop_pending = drop not in ("0", "false", "no")
         while True:
             params: dict[str, Any] = {"timeout": timeout}
             if self.offset is not None:
                 params["offset"] = self.offset
+            elif drop_pending:
+                params["drop_pending_updates"] = True
+                drop_pending = False
             url = TELEGRAM_API.format(token=self.token, method="getUpdates")
             req = urllib.request.Request(
                 url,
@@ -249,20 +296,12 @@ class TelegramBot:
                 continue
             for update in body.get("result", []):
                 self.offset = int(update["update_id"]) + 1
-                try:
-                    self.handle_update(update)
-                except Exception as exc:
-                    chat_id = None
-                    msg = update.get("message") or update.get("edited_message") or {}
-                    chat = msg.get("chat") or {}
-                    if chat.get("id") is not None:
-                        chat_id = int(chat["id"])
-                    if chat_id is not None:
-                        self._reply_error(chat_id, exc)
-                    else:
-                        logger.exception(
-                            "failed to handle update %s", update.get("update_id")
-                        )
+                threading.Thread(
+                    target=self._dispatch_update,
+                    args=(update,),
+                    daemon=True,
+                    name=f"egrocery-update-{update.get('update_id')}",
+                ).start()
 
 
 def main() -> int:
