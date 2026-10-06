@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     search_p = sub.add_parser(
         "search",
-        help='Find cheapest offers per service for a query (e.g. "молоко 1.5%")',
+        help='Find cheapest offers per service (example query: milk 1.5%% fat)',
     )
     search_p.add_argument("query", type=str, help="Product search text")
     search_p.add_argument("--chat-id", type=int, default=None)
