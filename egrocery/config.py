@@ -44,3 +44,25 @@ def get_basket_path() -> Path:
 def get_vkusvill_mcp_url() -> str | None:
     raw = os.environ.get("VKUSVILL_MCP_URL", "").strip()
     return raw or None
+
+
+def _read_secrets_env(store_root: Path) -> dict[str, str]:
+    path = store_root / "internal" / "secrets.env"
+    if not path.is_file():
+        return {}
+    out: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        out[key.strip()] = value.strip().strip('"').strip("'")
+    return out
+
+
+def get_bot_token() -> str | None:
+    raw = os.environ.get("EGROCERY_BOT_TOKEN", "").strip()
+    if raw:
+        return raw
+    secrets = _read_secrets_env(get_store_root())
+    return secrets.get("EGROCERY_BOT_TOKEN") or None

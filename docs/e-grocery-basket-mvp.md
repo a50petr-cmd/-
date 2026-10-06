@@ -118,9 +118,20 @@ P0: маппинг `item.id → { lavka: slug/url, vkusvill: xml_id, ... }` в `
 
 ### P2 — Address + delivery slot
 
-- Сохранённый адрес пользователя (один на чат) в store (`internal/grocery-profiles/`).
+**Реализовано (ветка `cursor/e-grocery-basket-p0`, первый шаг P2):**
+
+- Telegram-бот: `python -m egrocery bot` (или `python -m egrocery.bot`).
+- Команды: `/start`, `/address` (текст или геопозиция 📍), `/basket` (таблица для **этого чата**).
+- Профиль доставки на `chat_id`: `{JOB_AGENT_STORE}/internal/egrocery/users/{chat_id}.yaml`  
+  (`address_text`, `lat`, `lon`, `city`, `updated_at`; город по умолчанию **Электросталь**).
+- Текстовый адрес → Yandex Geocoder, если задан `YANDEX_GEOCODER_API_KEY`; иначе сохраняется текст + предупреждение в ответе.
+- CLI для отладки: `python -m egrocery basket --chat-id <id>` или `--lat` / `--lon`.
+- Живые цены Samokat / Lavka / VkusVill — **заглушки** (`—`); в лог пишется, какая geo использовалась.
+
+**Ещё в P2 (не сделано):**
+
 - Расчёт **delivery fee**, **min basket**, **nearest slot** (где API/checkout preview доступен).
-- Samokat / Lavka: сессия + geo; Magnit: `storeCode` от адреса.
+- Samokat / Lavka: сессия + geo для реальных витрин; Magnit: `storeCode` от адреса.
 - Предупреждение о **substitutions** при сборке (только текстовое, без симуляции).
 
 ---
@@ -230,4 +241,28 @@ $JOB_AGENT_STORE/docs/e-grocery-basket-starter.yaml
 $env:JOB_AGENT_STORE = "$HOME\job-agent-store"
 python -m egrocery basket
 ```
+
+**Telegram-бот (Windows PowerShell):**
+
+1. Создайте бота у [@BotFather](https://t.me/BotFather) → `/newbot` → скопируйте token.
+2. В `%USERPROFILE%\job-agent-store\internal\secrets.env` (создайте файл при необходимости):
+
+   ```env
+   EGROCERY_BOT_TOKEN=123456:ABC-DEF...
+   # опционально, для текста → координаты:
+   YANDEX_GEOCODER_API_KEY=ваш-ключ
+   ```
+
+3. Запуск из корня репозитория (venv с `pip install -r requirements.txt`):
+
+   ```powershell
+   $env:JOB_AGENT_STORE = "$HOME\job-agent-store"
+   python -m egrocery bot
+   ```
+
+4. В Telegram: `/address` → адрес текстом или «Поделиться геолокацией» → `/basket`.
+
+Переменные окружения (альтернатива secrets.env): `EGROCERY_BOT_TOKEN`, `JOB_AGENT_STORE`, `YANDEX_GEOCODER_API_KEY`.
+
+**Заглушки цен (P0):** `fetch_prices_samokat` / `lavka` / `vkusvill` в `egrocery/providers.py` возвращают `—` до подключения API; Ozon Fresh по-прежнему в `services_deferred`.
 
