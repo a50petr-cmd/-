@@ -236,7 +236,7 @@ $JOB_AGENT_STORE/docs/e-grocery-basket-starter.yaml
 
 **VkusVill:** MCP `vkusvill_products_search` ([док](https://mcp.vkusvill.ru/)); лимит ~429 при частых запросах — кэш 60 с на `(chat_id, query, сервис)` (`EGROCERY_SEARCH_CACHE_TTL`).
 
-**Lavka:** env `YANDEX_LAVKA_COOKIE` (строка Cookie из браузера после входа на lavka.yandex.ru), опционально `YANDEX_LAVKA_CSRF_TOKEN`, `YANDEX_LAVKA_WEB_CITY` (213 = Москва/МО).
+**Lavka:** по умолчанию бот сам забирает **гостевые cookies** с lavka.yandex.ru и пишет в `{JOB_AGENT_STORE}/internal/egrocery/lavka-cookies.txt` (`EGROCERY_LAVKA_AUTO_COOKIE=1`). Если captcha/403 — вручную `YANDEX_LAVKA_COOKIE` в `secrets.env` (Cookie из браузера после входа). Опционально `YANDEX_LAVKA_CSRF_TOKEN`, `YANDEX_LAVKA_WEB_CITY` (213 = Москва/МО).
 
 **Samokat:** `api-web.samokat.ru` + `api.samokat.ru/showcase` по координатам; при 403 запускайте бота с **домашнего IP** (не облако).
 

@@ -5,19 +5,12 @@ import os
 import re
 from typing import Any
 
+from egrocery.clients.lavka_session import resolve_lavka_session
 from egrocery.http_client import ProviderHttpError, shared_http_client
 from egrocery.offers import Offer
 
 _CSRF_RE = re.compile(r'"csrfToken"\s*:\s*"([^"]+)"')
 _BASE = "https://lavka.yandex.ru"
-
-
-def _cookie_header() -> str | None:
-    for key in ("YANDEX_LAVKA_COOKIE", "LAVKA_COOKIE", "LAVKA_SESSION_COOKIE"):
-        raw = os.environ.get(key, "").strip()
-        if raw:
-            return raw
-    return None
 
 
 def _web_city() -> str:
@@ -45,7 +38,7 @@ def _ensure_csrf(session_headers: dict[str, str]) -> str | None:
     resp = client.request("GET", f"{_BASE}/", headers=session_headers, timeout=25.0)
     if resp.status_code in (401, 403):
         raise ProviderHttpError(
-            f"Lavka HTTP {resp.status_code} — задайте YANDEX_LAVKA_COOKIE (сессия Yandex)",
+            f"Lavka HTTP {resp.status_code} — обновите cookies (bootstrap или браузер)",
             status=resp.status_code,
         )
     match = _CSRF_RE.search(resp.text)
@@ -53,18 +46,14 @@ def _ensure_csrf(session_headers: dict[str, str]) -> str | None:
 
 
 def search_offers(lat: float, lon: float, query: str, *, limit: int = 10) -> list[Offer]:
-    cookie = _cookie_header()
-    if not cookie:
-        raise ProviderHttpError(
-            "Lavka: не задан YANDEX_LAVKA_COOKIE — поиск только с cookies аккаунта"
-        )
+    lavka = resolve_lavka_session()
     session_headers = {
-        "Cookie": cookie,
+        "Cookie": lavka.cookie_header,
         "Origin": _BASE,
         "Referer": f"{_BASE}/",
         "X-Requested-With": "XMLHttpRequest",
     }
-    csrf = _ensure_csrf(session_headers)
+    csrf = lavka.csrf_token or _ensure_csrf(session_headers)
     headers = {
         **session_headers,
         "Content-Type": "application/json",
@@ -92,16 +81,36 @@ def search_offers(lat: float, lon: float, query: str, *, limit: int = 10) -> lis
         timeout=25.0,
     )
     if resp.status_code in (401, 403):
-        raise ProviderHttpError(
-            f"Lavka HTTP {resp.status_code} — обновите cookies или запускайте с домашнего IP",
-            status=resp.status_code,
+        from egrocery.clients.lavka_session import bootstrap_guest_session
+
+        try:
+            lavka = bootstrap_guest_session()
+        except ProviderHttpError:
+            raise ProviderHttpError(
+                f"Lavka HTTP {resp.status_code} — вставьте YANDEX_LAVKA_COOKIE из браузера (lavka.yandex.ru)",
+                status=resp.status_code,
+            ) from None
+        headers["Cookie"] = lavka.cookie_header
+        if lavka.csrf_token:
+            headers["X-CSRF-Token"] = lavka.csrf_token
+        resp = client.request(
+            "POST",
+            f"{_BASE}/api/v1/providers/search/v3/lavka",
+            json=body,
+            headers=headers,
+            timeout=25.0,
         )
+        if resp.status_code in (401, 403):
+            raise ProviderHttpError(
+                f"Lavka HTTP {resp.status_code} — нужна сессия Yandex из браузера",
+                status=resp.status_code,
+            )
     if resp.status_code >= 400:
         raise ProviderHttpError(f"Lavka HTTP {resp.status_code}", status=resp.status_code)
     raw = resp.json()
     if isinstance(raw, dict) and raw.get("type") == "captcha":
         raise ProviderHttpError(
-            "Lavka: anti-bot captcha — нужен домашний IP или YANDEX_LAVKA_MCP_SPRAVKA"
+            "Lavka: captcha — один раз скопируйте Cookie из браузера в secrets.env"
         )
     products = raw.get("cacheProducts") if isinstance(raw, dict) else None
     products = products if isinstance(products, list) else []

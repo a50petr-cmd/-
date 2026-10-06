@@ -69,3 +69,16 @@ def get_bot_token() -> str | None:
         return raw
     secrets = _read_secrets_env(get_store_root())
     return secrets.get("EGROCERY_BOT_TOKEN") or None
+
+
+def get_lavka_cookie_override() -> str | None:
+    for key in ("YANDEX_LAVKA_COOKIE", "LAVKA_COOKIE", "LAVKA_SESSION_COOKIE"):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            return raw
+    secrets = _read_secrets_env(get_store_root())
+    return secrets.get("YANDEX_LAVKA_COOKIE") or secrets.get("LAVKA_COOKIE") or None
+
+
+def lavka_cookie_cache_path() -> Path:
+    return get_store_root() / "internal" / "egrocery" / "lavka-cookies.txt"
