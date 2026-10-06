@@ -7,6 +7,7 @@ from typing import Any
 from egrocery.config import get_vkusvill_mcp_url
 from egrocery.http_client import ProviderHttpError, shared_http_client
 from egrocery.offers import Offer
+from egrocery.text_sanitize import clean_product_text
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def search_products(query: str, *, limit: int = 10) -> list[Offer]:
             price_rub = float(current)
         except (TypeError, ValueError):
             continue
-        name = str(item.get("name") or "").strip() or "—"
+        name = clean_product_text(str(item.get("name") or "").strip()) or "—"
         url = item.get("url")
         unit = item.get("unit")
         offers.append(

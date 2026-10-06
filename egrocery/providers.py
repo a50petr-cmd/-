@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Protocol
 
 from egrocery.cache import TtlCache
@@ -95,14 +97,36 @@ def search_offers_cached(
     return offers, None
 
 
+def _provider_timeout_sec() -> float:
+    raw = os.environ.get("EGROCERY_PROVIDER_TIMEOUT_SEC", "12").strip()
+    try:
+        return max(3.0, float(raw))
+    except ValueError:
+        return 12.0
+
+
 def search_all_providers(
     point: DeliveryPoint, query: str, *, limit: int = 10
 ) -> dict[str, tuple[list[Offer], str | None]]:
+    services = [s for s in point.services_enabled if s in CLIENTS]
+    if not services:
+        return {}
+    timeout = _provider_timeout_sec()
     out: dict[str, tuple[list[Offer], str | None]] = {}
-    for service in point.services_enabled:
-        if service not in CLIENTS:
-            continue
-        out[service] = search_offers_cached(point, service, query, limit=limit)
+    with ThreadPoolExecutor(max_workers=min(3, len(services))) as pool:
+        futures = {
+            pool.submit(search_offers_cached, point, s, query, limit=limit): s
+            for s in services
+        }
+        for fut in as_completed(futures, timeout=timeout + 2):
+            service = futures[fut]
+            try:
+                out[service] = fut.result(timeout=1)
+            except Exception as exc:
+                logger.warning("%s parallel search failed: %s", service, exc)
+                out[service] = [], f"{service}: таймаут или ошибка"
+    for service in services:
+        out.setdefault(service, ([], f"{service}: нет ответа"))
     return out
 
 
@@ -115,11 +139,26 @@ def _format_cell(offer: Offer | None) -> str:
 def fetch_prices_for_service(
     point: DeliveryPoint, basket: Basket, service: str
 ) -> dict[str, str]:
-    cells: dict[str, str] = {}
-    for item in basket.items:
-        offers, _err = search_offers_cached(point, service, item.query, limit=8)
+    cells: dict[str, str] = {item.id: PLACEHOLDER for item in basket.items}
+    if not basket.items:
+        return cells
+    timeout = _provider_timeout_sec()
+
+    def one(item_id: str, query: str) -> tuple[str, str]:
+        offers, _err = search_offers_cached(point, service, query, limit=8)
         best, _ = pick_cheapest_offer(offers)
-        cells[item.id] = _format_cell(best)
+        return item_id, _format_cell(best)
+
+    with ThreadPoolExecutor(max_workers=min(4, len(basket.items))) as pool:
+        futures = [
+            pool.submit(one, item.id, item.query) for item in basket.items
+        ]
+        try:
+            for fut in as_completed(futures, timeout=timeout * len(basket.items)):
+                item_id, cell = fut.result(timeout=1)
+                cells[item_id] = cell
+        except Exception as exc:
+            logger.warning("%s basket row fetch incomplete: %s", service, exc)
     return cells
 
 
@@ -166,4 +205,21 @@ PROVIDER_FETCHERS = {
 def fetch_all_provider_prices(
     point: DeliveryPoint, basket: Basket
 ) -> dict[str, dict[str, str]]:
-    return {key: fn(point, basket) for key, fn in PROVIDER_FETCHERS.items()}
+    keys = list(PROVIDER_FETCHERS.keys())
+    timeout = _provider_timeout_sec() * max(1, len(basket.items))
+
+    def run(key: str) -> tuple[str, dict[str, str]]:
+        return key, PROVIDER_FETCHERS[key](point, basket)
+
+    out: dict[str, dict[str, str]] = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(run, key): key for key in keys}
+        try:
+            for fut in as_completed(futures, timeout=timeout + 5):
+                key, cells = fut.result(timeout=1)
+                out[key] = cells
+        except Exception as exc:
+            logger.warning("basket provider fetch incomplete: %s", exc)
+    for key in keys:
+        out.setdefault(key, {item.id: PLACEHOLDER for item in basket.items})
+    return out

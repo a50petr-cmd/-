@@ -15,6 +15,7 @@ from egrocery.delivery_point import save_user_delivery_point
 from egrocery.geocode import geocode_address_with_warning
 from egrocery.loaders import load_location
 from egrocery.models import Location
+from egrocery.telegram_util import parse_bot_command
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +57,31 @@ class TelegramBot:
         if chunk:
             self._api("sendMessage", {"chat_id": chat_id, "text": chunk})
 
+    def send_typing(self, chat_id: int) -> None:
+        try:
+            self._api("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+        except Exception:
+            logger.debug("sendChatAction failed", exc_info=True)
+
+    def _reply_error(self, chat_id: int, exc: BaseException) -> None:
+        logger.exception("handler error chat_id=%s", chat_id)
+        try:
+            self.send_message(
+                chat_id,
+                "Не удалось обработать запрос. Попробуйте ещё раз через минуту "
+                f"или отправьте 📍 геопозицию.\n\n_({type(exc).__name__})_",
+            )
+        except Exception:
+            logger.exception("failed to send error to chat_id=%s", chat_id)
+
     def handle_start(self, chat_id: int) -> None:
         self.send_message(
             chat_id,
             "Привет! Я сравниваю корзину для доставки (Samokat, Lavka, VkusVill).\n\n"
             "1) /address — задайте адрес текстом или отправьте геопозицию 📍\n"
+            "   Можно сразу: /address Электросталь, ул. …, д. …\n"
             "2) /basket — таблица цен для сохранённой точки доставки\n"
-            "3) /search <текст> или /item <текст> — самый дешёвый вариант по сервисам",
+            "3) /search молоко 1.5% или /item … — самый дешёвый вариант по сервисам",
         )
 
     def handle_address_prompt(self, chat_id: int) -> None:
@@ -80,10 +99,12 @@ class TelegramBot:
         self.send_message(
             chat_id,
             f"Сохранена геопозиция: {point.geo_summary()}\n"
-            "Теперь можно вызвать /basket.",
+            "Теперь можно /search или /basket.",
         )
 
     def save_address_text(self, chat_id: int, address: str) -> None:
+        self.send_typing(chat_id)
+        self.send_message(chat_id, "Сохраняю адрес и ищу координаты…")
         store = get_store_root()
         location_path = store / "docs" / "e-grocery-location.yaml"
         if location_path.is_file():
@@ -123,10 +144,12 @@ class TelegramBot:
             )
         elif warning:
             lines.append(warning)
-        lines.append("Вызовите /basket для сравнения.")
+        lines.append("Вызовите /search или /basket.")
         self.send_message(chat_id, "\n".join(lines))
 
     def handle_basket(self, chat_id: int) -> None:
+        self.send_typing(chat_id)
+        self.send_message(chat_id, "Собираю корзину по сервисам…")
         text = build_basket_markdown(chat_id=chat_id)
         self.send_message(chat_id, text)
 
@@ -135,9 +158,11 @@ class TelegramBot:
         if not q:
             self.send_message(
                 chat_id,
-                "Укажите запрос: `/search молоко 1.5%` или `/item молоко 1.5%`",
+                "Укажите запрос: /search молоко 1.5% или /item молоко 1.5%",
             )
             return
+        self.send_typing(chat_id)
+        self.send_message(chat_id, f"Ищу «{q}» по Samokat, Lavka, VkusVill…")
         text = build_search_markdown(q, chat_id=chat_id)
         self.send_message(chat_id, text)
 
@@ -153,33 +178,50 @@ class TelegramBot:
 
         if message.get("location"):
             loc = message["location"]
-            self.save_location_pin(chat_id, float(loc["latitude"]), float(loc["longitude"]))
+            try:
+                self.save_location_pin(
+                    chat_id, float(loc["latitude"]), float(loc["longitude"])
+                )
+            except Exception as exc:
+                self._reply_error(chat_id, exc)
             return
 
         text = (message.get("text") or "").strip()
         if not text:
             return
 
-        if text.startswith("/start"):
+        cmd, args = parse_bot_command(text)
+
+        if cmd == "/start":
             self.handle_start(chat_id)
             return
-        if text.startswith("/address"):
-            self.handle_address_prompt(chat_id)
+        if cmd == "/address":
+            if args:
+                try:
+                    self.save_address_text(chat_id, args)
+                except Exception as exc:
+                    self._reply_error(chat_id, exc)
+            else:
+                self.handle_address_prompt(chat_id)
             return
-        if text.startswith("/basket"):
-            self.handle_basket(chat_id)
+        if cmd == "/basket":
+            try:
+                self.handle_basket(chat_id)
+            except Exception as exc:
+                self._reply_error(chat_id, exc)
             return
-        if text.startswith("/search"):
-            query = text[len("/search") :].strip()
-            self.handle_search(chat_id, query)
-            return
-        if text.startswith("/item"):
-            query = text[len("/item") :].strip()
-            self.handle_search(chat_id, query)
+        if cmd in ("/search", "/item"):
+            try:
+                self.handle_search(chat_id, args)
+            except Exception as exc:
+                self._reply_error(chat_id, exc)
             return
 
-        if chat_id in self.pending_address and not text.startswith("/"):
-            self.save_address_text(chat_id, text)
+        if chat_id in self.pending_address and cmd is None:
+            try:
+                self.save_address_text(chat_id, text)
+            except Exception as exc:
+                self._reply_error(chat_id, exc)
 
     def run_polling(self, *, timeout: int = 30) -> None:
         logger.info("egrocery bot polling started")
@@ -209,8 +251,18 @@ class TelegramBot:
                 self.offset = int(update["update_id"]) + 1
                 try:
                     self.handle_update(update)
-                except Exception:
-                    logger.exception("failed to handle update %s", update.get("update_id"))
+                except Exception as exc:
+                    chat_id = None
+                    msg = update.get("message") or update.get("edited_message") or {}
+                    chat = msg.get("chat") or {}
+                    if chat.get("id") is not None:
+                        chat_id = int(chat["id"])
+                    if chat_id is not None:
+                        self._reply_error(chat_id, exc)
+                    else:
+                        logger.exception(
+                            "failed to handle update %s", update.get("update_id")
+                        )
 
 
 def main() -> int:

@@ -88,9 +88,11 @@ def search_offers(lat: float, lon: float, query: str, *, limit: int = 10) -> lis
     last_error: ProviderHttpError | None = None
     for url, params in paths:
         try:
-            data = client.get_json(url, params=params)
+            data = client.get_json(url, params=params, timeout=8.0)
         except ProviderHttpError as exc:
             last_error = exc
+            if exc.status == 403:
+                raise exc
             continue
         except Exception:
             continue
