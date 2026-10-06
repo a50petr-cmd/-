@@ -120,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_app = sub.add_parser("approve", help="Одобрить отклик (без автоотправки без AUTO_APPLY)")
     p_app.add_argument("id", help="id вида hh:12345 или habr:67890")
+    p_app.add_argument("--no-telegram", action="store_true", help="Не слать письмо в Telegram")
+
+    p_tl = sub.add_parser("telegram-letter", help="Отправить cover_letter_ru из pending в Telegram")
+    p_tl.add_argument("id", help="id вида hh_web:12345")
 
     sub.add_parser("telegram-test", help="Проверить TELEGRAM_BOT_TOKEN / CHAT_ID")
 
@@ -131,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         "search": cmd_search,
         "pending": cmd_pending_list,
         "approve": cmd_approve,
+        "telegram-letter": cmd_telegram_letter,
         "telegram-test": cmd_telegram_test,
     }
     return handlers[args.command](args)
