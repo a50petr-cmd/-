@@ -28,7 +28,13 @@ HH_USER_AGENT = os.environ.get(
     "PetroJobAgent/1.0 (petro.job.search@users.noreply.github.com)",
 )
 HH_API_BASE = "https://api.hh.ru"
+HH_WEB_BASE = "https://hh.ru"
 HH_RATE_DELAY_SEC = float(os.environ.get("HH_RATE_DELAY_SEC", "0.34"))
+HH_WEB_USER_AGENT = os.environ.get(
+    "HH_WEB_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+)
 
 HABR_BASE = "https://career.habr.com"
 HABR_RATE_DELAY_SEC = float(os.environ.get("HABR_RATE_DELAY_SEC", "1.0"))

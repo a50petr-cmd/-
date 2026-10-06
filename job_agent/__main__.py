@@ -35,6 +35,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         profile,
         limit=args.limit,
         use_hh_fixture=args.use_fixtures,
+        hh_web_only=args.hh_web_only,
         persist_pending_min_score=args.min_pending_score,
         notify=not args.no_notify,
     )
@@ -92,6 +93,11 @@ def main(argv: list[str] | None = None) -> int:
     p_search.add_argument("--limit", type=int, default=20)
     p_search.add_argument("--show", type=int, default=15)
     p_search.add_argument("--use-fixtures", action="store_true", help="HH: использовать локальный fixture")
+    p_search.add_argument(
+        "--hh-web-only",
+        action="store_true",
+        help="HH: только поиск через сайт hh.ru (без api.hh.ru)",
+    )
     p_search.add_argument("--min-pending-score", type=int, default=55)
     p_search.add_argument("--no-notify", action="store_true")
 
