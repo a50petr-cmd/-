@@ -22,6 +22,9 @@ class SearchProfile:
     salary_comment: str = ""
     remote_preference: str = "hybrid_or_remote"  # onsite | hybrid | remote | any
     hh_search_text: str = ""
+    hh_search_queries: list[str] = field(default_factory=list)
+    experience_keywords: list[str] = field(default_factory=list)
+    experience_min_hits: int = 2
     hh_area_ids: list[int] = field(default_factory=lambda: [1])  # Москва по умолчанию
     habr_query: str = ""
     resume_source_note: str = ""

@@ -11,6 +11,7 @@ from job_agent.config import HH_RATE_DELAY_SEC, HH_WEB_BASE, HH_WEB_USER_AGENT
 from job_agent.models import Vacancy
 from job_agent.profile import SearchProfile
 from job_agent.sources.base import VacancySource
+from job_agent.sources.hh_queries import hh_search_queries
 
 log = logging.getLogger(__name__)
 
@@ -107,8 +108,14 @@ class HeadHunterWebSource(VacancySource):
             "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
         }
 
-    def fetch(self, profile: SearchProfile, limit: int = 30) -> list[Vacancy]:
-        text = profile.hh_search_text or " ".join(profile.desired_roles[:2] or ["python"])
+    def _fetch_one_query(
+        self,
+        profile: SearchProfile,
+        text: str,
+        limit: int,
+        *,
+        seen_urls: set[str],
+    ) -> list[Vacancy]:
         areas = profile.hh_area_ids or [1]
         params: dict[str, str | int] = {
             "text": text,
@@ -118,7 +125,6 @@ class HeadHunterWebSource(VacancySource):
             params["area"] = areas[0]
 
         vacancies: list[Vacancy] = []
-        seen_urls: set[str] = set()
         page = 0
         per_page = 20
 
@@ -144,15 +150,16 @@ class HeadHunterWebSource(VacancySource):
             cards = soup.select('[data-qa="vacancy-serp__vacancy"]')
             if not cards:
                 if page == 0:
-                    log.warning("HH web: карточки вакансий не найдены (возможна капча или смена вёрстки).")
+                    log.warning(
+                        "HH web: нет карточек для запроса «%s…» (капча или вёрстка).",
+                        text[:40],
+                    )
                 break
 
             listing_url = resp.url
             for card in cards:
                 parsed = _parse_vacancy_card(card, listing_url=listing_url)
-                if not parsed or not parsed.url:
-                    continue
-                if parsed.url in seen_urls:
+                if not parsed or not parsed.url or parsed.url in seen_urls:
                     continue
                 seen_urls.add(parsed.url)
                 vacancies.append(parsed)
@@ -163,4 +170,20 @@ class HeadHunterWebSource(VacancySource):
                 break
             page += 1
 
-        return vacancies[:limit]
+        return vacancies
+
+    def fetch(self, profile: SearchProfile, limit: int = 30) -> list[Vacancy]:
+        queries = hh_search_queries(profile)
+        seen_urls: set[str] = set()
+        all_vacancies: list[Vacancy] = []
+        per_query = max(8, (limit + len(queries) - 1) // len(queries))
+
+        for q in queries:
+            if len(all_vacancies) >= limit:
+                break
+            need = min(per_query, limit - len(all_vacancies))
+            batch = self._fetch_one_query(profile, q, need, seen_urls=seen_urls)
+            log.info("HH web запрос «%s…»: %d вакансий", q[:50], len(batch))
+            all_vacancies.extend(batch)
+
+        return all_vacancies[:limit]
