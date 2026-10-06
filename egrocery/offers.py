@@ -101,11 +101,39 @@ def target_fat_from_query(query: str) -> float | None:
         return None
 
 
-def filter_offers_for_query(offers: list[Offer], query: str) -> tuple[list[Offer], str | None]:
-    """Prefer offers matching fat %% in query (e.g. milk 1.5%%)."""
-    target = target_fat_from_query(query)
-    if target is None or not offers:
-        return offers, None
+def _normalize_ru(text: str) -> str:
+    return text.lower().replace("ё", "е")
+
+
+def _query_keywords(query: str) -> list[str]:
+    q = _normalize_ru(_FAT_QUERY_RE.sub(" ", query))
+    words = re.findall(r"[a-zа-я0-9]+", q, re.IGNORECASE)
+    keywords: list[str] = []
+    for w in words:
+        w = _normalize_ru(w)
+        if len(w) < 3 or w.isdigit():
+            continue
+        keywords.append(w)
+    return keywords
+
+
+def _name_matches_keywords(name: str, keywords: list[str]) -> bool:
+    if not keywords:
+        return True
+    n = _normalize_ru(name)
+    for kw in keywords:
+        if kw in n:
+            continue
+        stem = kw[: max(4, len(kw) - 1)]
+        if stem and stem in n:
+            continue
+        return False
+    return True
+
+
+def _filter_by_fat(
+    offers: list[Offer], target: float
+) -> tuple[list[Offer], str | None]:
     exact: list[Offer] = []
     close: list[Offer] = []
     for offer in offers:
@@ -119,12 +147,32 @@ def filter_offers_for_query(offers: list[Offer], query: str) -> tuple[list[Offer
     if exact:
         return exact, None
     if close:
-        return close, (
-            f"Нет ровно {target:g}% — показаны близкие по жирности."
-        )
-    return offers, (
-        f"Нет совпадения по {target:g}% — показан самый дешёвый из выдачи."
-    )
+        return close, f"Нет ровно {target:g}% — показаны близкие по жирности."
+    return offers, f"Нет совпадения по {target:g}% — показан самый дешёвый из выдачи."
+
+
+def filter_offers_for_query(offers: list[Offer], query: str) -> tuple[list[Offer], str | None]:
+    """Match query keywords (сметана, молоко…) and optional fat %%."""
+    if not offers:
+        return offers, None
+    notes: list[str] = []
+    keywords = _query_keywords(query)
+    pool = offers
+    if keywords:
+        matched = [o for o in offers if _name_matches_keywords(o.product_name, keywords)]
+        if matched:
+            pool = matched
+        else:
+            notes.append(
+                f"Нет товара с «{' '.join(keywords)}» в названии — показана вся выдача."
+            )
+    target = target_fat_from_query(query)
+    if target is not None:
+        pool, fat_note = _filter_by_fat(pool, target)
+        if fat_note:
+            notes.append(fat_note)
+    note = " ".join(notes) if notes else None
+    return pool, note
 
 
 def pick_cheapest_offer(

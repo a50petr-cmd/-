@@ -12,6 +12,16 @@ def test_filter_milk_15_excludes_32() -> None:
     assert note is None
 
 
+def test_filter_smetana_excludes_slivki() -> None:
+    offers = [
+        Offer(service="v", product_name="Сливки 10%, 450 мл", price_rub=152.0),
+        Offer(service="v", product_name="Сметана 10%, 300 г", price_rub=90.0),
+    ]
+    filtered, _ = filter_offers_for_query(offers, "сметана 10%")
+    assert len(filtered) == 1
+    assert "Сметана" in filtered[0].product_name
+
+
 def test_filter_falls_back_with_note() -> None:
     offers = [
         Offer(service="v", product_name="Молоко 3,2%, 1 л", price_rub=93.0),
