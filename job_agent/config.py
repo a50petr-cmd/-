@@ -42,7 +42,7 @@ HABR_RATE_DELAY_SEC = float(os.environ.get("HABR_RATE_DELAY_SEC", "1.0"))
 SUPERJOB_API_BASE = "https://api.superjob.ru/2.0"
 SUPERJOB_APP_ID = os.environ.get("SUPERJOB_APP_ID", "")
 
-SCORE_NOTIFY_THRESHOLD = int(os.environ.get("JOB_SCORE_NOTIFY_THRESHOLD", "70"))
+SCORE_NOTIFY_THRESHOLD = int(os.environ.get("JOB_SCORE_NOTIFY_THRESHOLD", "65"))
 AUTO_APPLY = os.environ.get("JOB_AGENT_AUTO_APPLY", "").lower() in ("1", "true", "yes")
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")

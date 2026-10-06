@@ -16,8 +16,15 @@ if (-not $env:HH_USER_AGENT) {
   $env:HH_USER_AGENT = "PetroJobAgent/1.0 (alekseev.pa50@yandex.ru)"
 }
 
+$env:JOB_SCORE_NOTIFY_THRESHOLD = if ($env:JOB_SCORE_NOTIFY_THRESHOLD) { $env:JOB_SCORE_NOTIFY_THRESHOLD } else { "65" }
+
 Set-Location $repo
 $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$dow = (Get-Date).DayOfWeek
+if ($dow -eq "Saturday" -or $dow -eq "Sunday") {
+  "=== $ts skip weekend (no search) ===" | Out-File -Append $log
+  exit 0
+}
 "=== $ts daily search ===" | Out-File -Append $log
 
 & $python -m job_agent search --hh-web-only --limit 40 --show 5 *>> $log
