@@ -12,7 +12,7 @@ from egrocery.clients import samokat as samokat_client
 from egrocery.delivery_point import DeliveryPoint
 from egrocery.http_client import ProviderHttpError
 from egrocery.models import Basket
-from egrocery.offers import Offer, pick_cheapest_offer
+from egrocery.offers import Offer, filter_offers_for_query, pick_cheapest_offer
 from egrocery.table import PLACEHOLDER
 from egrocery.vkusvill_mcp import search_products as vkusvill_search
 
@@ -154,7 +154,8 @@ def fetch_prices_for_service(
 
     def one(item_id: str, query: str) -> tuple[str, str]:
         offers, _err = search_offers_cached(point, service, query, limit=8)
-        best, _ = pick_cheapest_offer(offers)
+        filtered, _rel = filter_offers_for_query(offers, query)
+        best, _ = pick_cheapest_offer(filtered)
         return item_id, _format_cell(best)
 
     jobs = {

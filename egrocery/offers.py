@@ -9,6 +9,8 @@ _GRAMS_RE = re.compile(
 _LITERS_RE = re.compile(
     r"(\d+(?:[.,]\d+)?)\s*(л|l|мл|ml)\b", re.IGNORECASE
 )
+_FAT_QUERY_RE = re.compile(r"(\d+[.,]\d+|\d+)\s*%")
+_FAT_NAME_RE = re.compile(r"(\d+[.,]\d+|\d+)\s*%")
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,52 @@ def enrich_unit_price(offer: Offer) -> Offer:
             product_id=offer.product_id,
         )
     return offer
+
+
+def _parse_fat_percent(text: str) -> float | None:
+    m = _FAT_NAME_RE.search(text.replace(" ", ""))
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def target_fat_from_query(query: str) -> float | None:
+    m = _FAT_QUERY_RE.search(query.replace(" ", ""))
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def filter_offers_for_query(offers: list[Offer], query: str) -> tuple[list[Offer], str | None]:
+    """Prefer offers matching fat %% in query (e.g. milk 1.5%%)."""
+    target = target_fat_from_query(query)
+    if target is None or not offers:
+        return offers, None
+    exact: list[Offer] = []
+    close: list[Offer] = []
+    for offer in offers:
+        fat = _parse_fat_percent(offer.product_name)
+        if fat is None:
+            continue
+        if abs(fat - target) < 0.05:
+            exact.append(offer)
+        elif abs(fat - target) <= 0.6:
+            close.append(offer)
+    if exact:
+        return exact, None
+    if close:
+        return close, (
+            f"Нет ровно {target:g}% — показаны близкие по жирности."
+        )
+    return offers, (
+        f"Нет совпадения по {target:g}% — показан самый дешёвый из выдачи."
+    )
 
 
 def pick_cheapest_offer(
