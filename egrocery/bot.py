@@ -40,7 +40,13 @@ class TelegramBot:
         self.pending_address: set[int] = set()
         self.offset: int | None = None
 
-    def _api(self, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _api(
+        self,
+        method: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        timeout: float | tuple[float, float] = 20.0,
+    ) -> dict[str, Any]:
         url = TELEGRAM_API.format(token=self.token, method=method)
         data = json.dumps(payload or {}).encode("utf-8")
         req = urllib.request.Request(
@@ -49,7 +55,7 @@ class TelegramBot:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
         if not body.get("ok"):
             raise RuntimeError(f"Telegram API {method} failed: {body}")
@@ -258,15 +264,18 @@ class TelegramBot:
                 )
 
     def run_polling(self, *, timeout: int = 30) -> None:
+        logger.info("Connecting to Telegram (getMe)…")
         try:
-            me = self._api("getMe")
+            me = self._api("getMe", timeout=(8.0, 20.0))
             logger.info(
-                "egrocery bot polling started as @%s build=%s",
+                "Polling started as @%s build=%s (long poll %ss — пауза без логов нормальна)",
                 me.get("username"),
                 BOT_BUILD,
+                timeout,
             )
-        except Exception:
-            logger.info("egrocery bot polling started build=%s", BOT_BUILD)
+        except Exception as exc:
+            logger.warning("getMe failed: %s — polling anyway", exc)
+            logger.info("Polling started build=%s", BOT_BUILD)
         drop = os.environ.get("EGROCERY_DROP_PENDING", "1").strip().lower()
         drop_pending = drop not in ("0", "false", "no")
         while True:
@@ -283,8 +292,11 @@ class TelegramBot:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
+            read_timeout = float(timeout) + 15.0
             try:
-                with urllib.request.urlopen(req, timeout=timeout + 10) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=(10.0, read_timeout)
+                ) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
             except urllib.error.URLError as exc:
                 logger.warning("getUpdates error: %s", exc)
@@ -305,12 +317,18 @@ class TelegramBot:
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
+    print("egrocery bot: starting…", flush=True)
     token = get_bot_token()
     if not token:
         raise SystemExit(
             "EGROCERY_BOT_TOKEN is not set (env or JOB_AGENT_STORE/internal/secrets.env)."
         )
+    print("egrocery bot: token loaded, opening long poll to Telegram…", flush=True)
     TelegramBot(token).run_polling()
     return 0
 
