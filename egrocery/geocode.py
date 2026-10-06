@@ -11,7 +11,11 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+PHOTON_SEARCH_URL = "https://photon.komoot.io/api/"
 DEFAULT_NOMINATIM_USER_AGENT = "egrocery-bot/0.1 contact@example.com"
+
+# Dev-only fallback for Petro test address (Электросталь, Ялагина 13).
+_DEV_ADDRESS_COORDS = (55.78412, 38.44567)
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,9 @@ def geocode_address_yandex(address: str, *, api_key: str | None = None) -> Geoco
         }
     )
     url = f"https://geocode-maps.yandex.ru/1.x/?{query}"
-    req = urllib.request.Request(url, headers={"User-Agent": "egrocery/0.1"})
+    req = urllib.request.Request(
+        url, headers={"User-Agent": get_nominatim_user_agent()}
+    )
     with urllib.request.urlopen(req, timeout=20) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     members = (
@@ -112,8 +118,15 @@ def geocode_address_nominatim(
     req = urllib.request.Request(
         url, headers={"User-Agent": get_nominatim_user_agent()}
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            logger.warning("Nominatim HTTP 403 — проверьте NOMINATIM_USER_AGENT с email")
+        else:
+            logger.warning("Nominatim HTTP %s", exc.code)
+        return None
     if not isinstance(payload, list) or not payload:
         return None
     hit = payload[0]
@@ -138,6 +151,72 @@ def geocode_address_nominatim(
     )
 
 
+def _dev_geo_fallback_enabled() -> bool:
+    raw = os.environ.get("EGROCERY_DEV_GEO_FALLBACK", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _dev_known_coords(address: str) -> GeocodeResult | None:
+    if not _dev_geo_fallback_enabled():
+        return None
+    norm = address.lower().replace("ё", "е")
+    if "электросталь" in norm and "ялагина" in norm and "13" in norm:
+        lat, lon = _DEV_ADDRESS_COORDS
+        return GeocodeResult(
+            lat=lat,
+            lon=lon,
+            formatted_address="Электросталь, ул. Ялагина, 13 (dev fallback)",
+            city="Электросталь",
+            source="dev_fallback",
+        )
+    return None
+
+
+def geocode_address_photon(
+    address: str,
+    *,
+    city: str | None = None,
+    region: str | None = None,
+    country: str = "RU",
+) -> GeocodeResult | None:
+    q = _nominatim_search_query(address, city=city, region=region, country=country)
+    query = urllib.parse.urlencode({"q": q, "limit": "1", "lang": "default"})
+    url = f"{PHOTON_SEARCH_URL}?{query}"
+    req = urllib.request.Request(
+        url, headers={"User-Agent": get_nominatim_user_agent()}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        logger.warning("Photon geocode failed: %s", exc)
+        return None
+    features = payload.get("features") if isinstance(payload, dict) else None
+    if not features:
+        return None
+    hit = features[0]
+    if not isinstance(hit, dict):
+        return None
+    geom = hit.get("geometry") or {}
+    coords = geom.get("coordinates")
+    if not isinstance(coords, list) or len(coords) < 2:
+        return None
+    lon_s, lat_s = coords[0], coords[1]
+    props = hit.get("properties") if isinstance(hit.get("properties"), dict) else {}
+    resolved_city = props.get("city") or props.get("locality") or props.get("town")
+    street = props.get("street") or props.get("name")
+    housenumber = props.get("housenumber")
+    parts = [p for p in (street, housenumber, resolved_city) if p]
+    display = ", ".join(str(p) for p in parts) if parts else q
+    return GeocodeResult(
+        lat=float(lat_s),
+        lon=float(lon_s),
+        formatted_address=display,
+        city=str(resolved_city) if resolved_city else None,
+        source="photon",
+    )
+
+
 def geocode_address(
     address: str,
     *,
@@ -145,12 +224,27 @@ def geocode_address(
     region: str | None = None,
     country: str = "RU",
 ) -> GeocodeResult | None:
-    """Yandex when API key is set; otherwise OpenStreetMap Nominatim."""
-    if get_yandex_geocoder_api_key():
-        return geocode_address_yandex(address)
-    return geocode_address_nominatim(
+    """Yandex (if key) → Nominatim → Photon → optional dev fallback."""
+    key = get_yandex_geocoder_api_key()
+    if key:
+        try:
+            result = geocode_address_yandex(address, api_key=key)
+        except urllib.error.URLError as exc:
+            logger.warning("Yandex geocoder failed: %s", exc)
+            result = None
+        if result:
+            return result
+    result = geocode_address_nominatim(
         address, city=city, region=region, country=country
     )
+    if result:
+        return result
+    result = geocode_address_photon(
+        address, city=city, region=region, country=country
+    )
+    if result:
+        return result
+    return _dev_known_coords(address)
 
 
 def geocode_address_with_warning(
@@ -167,6 +261,9 @@ def geocode_address_with_warning(
         )
     except urllib.error.URLError as exc:
         logger.warning("geocode failed for %r: %s", address, exc)
+        dev = _dev_known_coords(address)
+        if dev:
+            return dev, None
         return None, (
             "Геокодер недоступен — сохранён только текст адреса. "
             "Можно отправить геопозицию."
@@ -181,6 +278,6 @@ def geocode_address_with_warning(
         )
         return result, None
     return None, (
-        "Адрес не распознан геокодером — сохранён текст. "
-        "Пришлите геопозицию для точных цен."
+        "Адрес не распознан (Nominatim/Photon). "
+        "Задайте YANDEX_GEOCODER_API_KEY или пришлите геопозицию 📍."
     )

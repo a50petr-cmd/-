@@ -121,13 +121,13 @@ P0: маппинг `item.id → { lavka: slug/url, vkusvill: xml_id, ... }` в `
 **Реализовано (ветка `cursor/e-grocery-basket-p0`, первый шаг P2):**
 
 - Telegram-бот: `python -m egrocery bot` (или `python -m egrocery.bot`).
-- Команды: `/start`, `/address` (текст или геопозиция 📍), `/basket` (таблица для **этого чата**).
+- Команды: `/start`, `/address` (текст или геопозиция 📍), `/basket` (таблица для **этого чата**), `/search <текст>` и `/item <текст>` (поиск **одной позиции** — минимальная цена по каждому сервису, строка с минимумом выделена).
 - Профиль доставки на `chat_id`: `{JOB_AGENT_STORE}/internal/egrocery/users/{chat_id}.yaml`  
   (`address_text`, `lat`, `lon`, `city`, `updated_at`; город по умолчанию **Электросталь**).
-- Текстовый адрес → **Yandex Geocoder**, если задан `YANDEX_GEOCODER_API_KEY`; иначе **OpenStreetMap Nominatim** (без отдельного ключа). При `/basket`, если есть `address_text`, но нет `lat`/`lon`, геокодирование повторяется один раз.
-- User-Agent для Nominatim: env `NOMINATIM_USER_AGENT` или значение по умолчанию `egrocery-bot/0.1 contact@example.com`.
-- CLI для отладки: `python -m egrocery basket --chat-id <id>` или `--lat` / `--lon`.
-- Живые цены Samokat / Lavka / VkusVill — **заглушки** (`—`); в лог пишется, какая geo использовалась.
+- Геокодирование текста: **Yandex** (если `YANDEX_GEOCODER_API_KEY`) → **Nominatim** (OSM) → **Photon** (`photon.komoot.io`) → опционально dev-fallback для «Электросталь, Ялагина 13» (`EGROCERY_DEV_GEO_FALLBACK=1`).
+- **Nominatim:** обязателен корректный `User-Agent` с контактным email — env `NOMINATIM_USER_AGENT` (не используйте дефолтный `egrocery/0.1` без email). При **HTTP 403** с RU IP часто помогает Yandex Geocoder или Photon.
+- CLI: `python -m egrocery basket --chat-id <id>` / `--lat` / `--lon`; `python -m egrocery search "молоко 1.5%" --chat-id <id>`.
+- Цены: **VkusVill** — официальный MCP (`https://mcp001.vkusvill.ru/mcp`, env `VKUSVILL_MCP_URL` опционально). **Lavka / Samokat** — внутренние web API по `lat`/`lon`; без cookies (Lavka) или с домашнего IP часто **403** — в таблице остаётся `—`, в `/search` внизу список ошибок.
 
 **Ещё в P2 (не сделано):**
 
@@ -234,7 +234,13 @@ $JOB_AGENT_STORE/docs/e-grocery-basket-starter.yaml
 
 **Покрытие доставки:** перед живыми ценами нужно проверить, что **Самокат** и **Яндекс Лавка** доставляют на ваш адрес в Электростали (координаты/улица — в `address_note` location YAML). P0 выводит таблицу с placeholder `—` в ячейках цен.
 
-**VkusVill:** для автопоиска позже — env `VKUSVILL_MCP_URL` ([MCP API](https://mcp.vkusvill.ru/)); в P0 клиент не реализован, только заглушка.
+**VkusVill:** MCP `vkusvill_products_search` ([док](https://mcp.vkusvill.ru/)); лимит ~429 при частых запросах — кэш 60 с на `(chat_id, query, сервис)` (`EGROCERY_SEARCH_CACHE_TTL`).
+
+**Lavka:** env `YANDEX_LAVKA_COOKIE` (строка Cookie из браузера после входа на lavka.yandex.ru), опционально `YANDEX_LAVKA_CSRF_TOKEN`, `YANDEX_LAVKA_WEB_CITY` (213 = Москва/МО).
+
+**Samokat:** `api-web.samokat.ru` + `api.samokat.ru/showcase` по координатам; при 403 запускайте бота с **домашнего IP** (не облако).
+
+**Yandex Geocoder key:** [Developer Console](https://developer.tech.yandex.ru/) → Geocoder API → ключ в `YANDEX_GEOCODER_API_KEY` (в `secrets.env` или env). Бесплатный tier; нужен если Nominatim блокирует 403.
 
 **CLI:**
 
@@ -276,9 +282,23 @@ python -m egrocery basket
 
 4. В Telegram: `/address` → адрес текстом или «Поделиться геолокацией» → `/basket`.
 
-Переменные окружения (альтернатива secrets.env): `EGROCERY_BOT_TOKEN`, `JOB_AGENT_STORE`, `YANDEX_GEOCODER_API_KEY`, `NOMINATIM_USER_AGENT`.
+Переменные окружения (альтернатива secrets.env):
+
+| Переменная | Назначение |
+|------------|------------|
+| `EGROCERY_BOT_TOKEN` | Telegram bot token |
+| `JOB_AGENT_STORE` / `EGROCERY_STORE` | Путь к store с YAML |
+| `YANDEX_GEOCODER_API_KEY` | Геокодер Yandex (fallback при 403 Nominatim) |
+| `NOMINATIM_USER_AGENT` | `egrocery-bot/0.1 you@example.com` — **обязательно свой email** |
+| `VKUSVILL_MCP_URL` | По умолчанию `https://mcp001.vkusvill.ru/mcp` |
+| `YANDEX_LAVKA_COOKIE` | Cookies сессии Lavka |
+| `SAMOKAT_API_BASE` | Override API (редко) |
+| `EGROCERY_SEARCH_CACHE_TTL` | Секунды кэша поиска (0 = выкл.) |
+| `EGROCERY_DEV_GEO_FALLBACK` | `1` — hardcoded coords для тестового адреса Ялагина 13 |
 
 **Сеть:** ошибки вида `SSL: WRONG_VERSION_NUMBER` или таймаут при `getUpdates` — обычно временные проблемы сети/VPN/прокси между Windows и `api.telegram.org`, не баг бота. Подождите и перезапустите.
 
-**Заглушки цен (P0):** `fetch_prices_samokat` / `lavka` / `vkusvill` в `egrocery/providers.py` возвращают `—` до подключения API; Ozon Fresh по-прежнему в `services_deferred`.
+**403 troubleshooting:** если в логах `HTTP 403` для Nominatim — задайте `NOMINATIM_USER_AGENT` с email; если не помогло — `YANDEX_GEOCODER_API_KEY` или геопозиция 📍. Для Lavka/Samokat 403 — cookies / домашний IP. VkusVill MCP обычно доступен без cookies.
+
+**Ozon Fresh** по-прежнему в `services_deferred`.
 

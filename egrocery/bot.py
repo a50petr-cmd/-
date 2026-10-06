@@ -9,6 +9,7 @@ import urllib.request
 from typing import Any
 
 from egrocery.basket_service import build_basket_markdown
+from egrocery.search_service import build_search_markdown
 from egrocery.config import get_bot_token, get_store_root
 from egrocery.delivery_point import save_user_delivery_point
 from egrocery.geocode import geocode_address_with_warning
@@ -60,7 +61,8 @@ class TelegramBot:
             chat_id,
             "Привет! Я сравниваю корзину для доставки (Samokat, Lavka, VkusVill).\n\n"
             "1) /address — задайте адрес текстом или отправьте геопозицию 📍\n"
-            "2) /basket — таблица цен для сохранённой точки доставки",
+            "2) /basket — таблица цен для сохранённой точки доставки\n"
+            "3) /search <текст> или /item <текст> — самый дешёвый вариант по сервисам",
         )
 
     def handle_address_prompt(self, chat_id: int) -> None:
@@ -128,6 +130,17 @@ class TelegramBot:
         text = build_basket_markdown(chat_id=chat_id)
         self.send_message(chat_id, text)
 
+    def handle_search(self, chat_id: int, query: str) -> None:
+        q = query.strip()
+        if not q:
+            self.send_message(
+                chat_id,
+                "Укажите запрос: `/search молоко 1.5%` или `/item молоко 1.5%`",
+            )
+            return
+        text = build_search_markdown(q, chat_id=chat_id)
+        self.send_message(chat_id, text)
+
     def handle_update(self, update: dict[str, Any]) -> None:
         message = update.get("message") or update.get("edited_message")
         if not message:
@@ -155,6 +168,14 @@ class TelegramBot:
             return
         if text.startswith("/basket"):
             self.handle_basket(chat_id)
+            return
+        if text.startswith("/search"):
+            query = text[len("/search") :].strip()
+            self.handle_search(chat_id, query)
+            return
+        if text.startswith("/item"):
+            query = text[len("/item") :].strip()
+            self.handle_search(chat_id, query)
             return
 
         if chat_id in self.pending_address and not text.startswith("/"):

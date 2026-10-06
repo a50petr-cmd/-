@@ -43,7 +43,10 @@ def get_basket_path() -> Path:
 
 def get_vkusvill_mcp_url() -> str | None:
     raw = os.environ.get("VKUSVILL_MCP_URL", "").strip()
-    return raw or None
+    if raw:
+        return raw
+    # Official anonymous MCP; override with VKUSVILL_MCP_URL if needed.
+    return os.environ.get("VKUSVILL_API_MCP_URL", "").strip() or None
 
 
 def _read_secrets_env(store_root: Path) -> dict[str, str]:

@@ -24,6 +24,7 @@ def test_format_basket_table_markdown() -> None:
     assert "| Позиция | Samokat | Lavka | VkusVill |" in text
     assert f"| Молоко 1,5% (1 л) | {PLACEHOLDER} | {PLACEHOLDER} | {PLACEHOLDER} |" in text
     assert "Elektrostal" in text or "Samokat and Yandex Lavka" in text
+    assert "недоступны" in text or "оценка" in text
     assert "ozon_fresh" in text
 
 

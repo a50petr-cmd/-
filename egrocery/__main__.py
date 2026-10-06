@@ -5,6 +5,7 @@ from pathlib import Path
 
 from egrocery.basket_service import build_basket_markdown
 from egrocery.bot import main as bot_main
+from egrocery.search_service import build_search_markdown
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +50,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Override longitude (testing)",
     )
 
+    search_p = sub.add_parser(
+        "search",
+        help='Find cheapest offers per service for a query (e.g. "молоко 1.5%")',
+    )
+    search_p.add_argument("query", type=str, help="Product search text")
+    search_p.add_argument("--chat-id", type=int, default=None)
+    search_p.add_argument("--lat", type=float, default=None)
+    search_p.add_argument("--lon", type=float, default=None)
+    search_p.add_argument(
+        "--location",
+        type=str,
+        default=None,
+        help="Override location YAML",
+    )
+
     sub.add_parser("bot", help="Run Telegram bot (EGROCERY_BOT_TOKEN)")
 
     args = parser.parse_args(argv)
@@ -65,6 +81,18 @@ def main(argv: list[str] | None = None) -> int:
                 chat_id=args.chat_id,
                 lat=args.lat,
                 lon=args.lon,
+            )
+        )
+        return 0
+    if args.command == "search":
+        loc_path = Path(args.location) if args.location else None
+        print(
+            build_search_markdown(
+                args.query,
+                chat_id=args.chat_id,
+                lat=args.lat,
+                lon=args.lon,
+                location_path=loc_path,
             )
         )
         return 0
