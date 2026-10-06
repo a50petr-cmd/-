@@ -59,22 +59,28 @@ def send_message(text: str, *, parse_mode: str | None = "HTML") -> bool:
         resp.raise_for_status()
         return True
     except requests.RequestException as exc:
-        log.warning("Telegram sendMessage: %s", exc)
+        detail = ""
+        if getattr(exc, "response", None) is not None:
+            try:
+                detail = exc.response.text[:300]
+            except Exception:  # noqa: BLE001
+                pass
+        log.warning("Telegram sendMessage: %s %s", exc, detail)
         return False
 
 
-def _chunk_pre(text: str, header_html: str, *, max_body: int = 3400) -> list[str]:
-    """Сообщения с <pre> для удобного копирования письма."""
+def _chunk_plain(header: str, body: str, *, max_body: int = 3500) -> list[str]:
+    """Пlain text — надёжнее HTML для длинных писем (копировать из Telegram)."""
     chunks: list[str] = []
-    body = text
+    rest = body
     first = True
-    while body:
-        part = body[:max_body]
-        body = body[max_body:]
-        suffix = "\n\n… (продолжение)" if body else ""
-        prefix = header_html if first else header_html + " <i>(продолжение)</i>\n"
+    while rest:
+        part = rest[:max_body]
+        rest = rest[max_body:]
+        title = header if first else header + "\n(продолжение)\n"
         first = False
-        chunks.append(f"{prefix}<pre>{html.escape(part)}{suffix}</pre>")
+        suffix = "\n\n…" if rest else ""
+        chunks.append(f"{title}\n{part}{suffix}")
     return chunks
 
 
