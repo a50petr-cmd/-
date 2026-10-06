@@ -55,9 +55,24 @@ def cmd_pending_list(_args: argparse.Namespace) -> int:
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
+    from job_agent.telegram_notifier import send_pending_cover_letter
+
     data = approve(args.id)
     print(json.dumps(data, ensure_ascii=False, indent=2))
+    if not getattr(args, "no_telegram", False):
+        profile = load_profile(PROFILE_YAML)
+        if send_pending_cover_letter(args.id, profile):
+            print("Сопроводительное отправлено в Telegram.")
     return 0
+
+
+def cmd_telegram_letter(args: argparse.Namespace) -> int:
+    from job_agent.telegram_notifier import send_pending_cover_letter
+
+    profile = load_profile(PROFILE_YAML)
+    ok = send_pending_cover_letter(args.id, profile)
+    print("Письмо отправлено в Telegram." if ok else "Не удалось отправить (нет pending или бот).")
+    return 0 if ok else 1
 
 
 def cmd_telegram_test(_args: argparse.Namespace) -> int:

@@ -47,6 +47,9 @@ AUTO_APPLY = os.environ.get("JOB_AGENT_AUTO_APPLY", "").lower() in ("1", "true",
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_INCLUDE_COVER_LETTERS = os.environ.get(
+    "TELEGRAM_INCLUDE_COVER_LETTERS", "1"
+).lower() in ("1", "true", "yes")
 
 RESUME_PDF = os.environ.get(
     "RESUME_PDF",

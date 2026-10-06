@@ -85,6 +85,6 @@ def run_search(
             save_pending_application(profile, s)
 
     if notify:
-        notify_high_scores(scored, SCORE_NOTIFY_THRESHOLD)
+        notify_high_scores(scored, SCORE_NOTIFY_THRESHOLD, profile)
 
     return scored
