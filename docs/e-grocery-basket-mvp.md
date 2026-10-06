@@ -209,7 +209,7 @@ P0: маппинг `item.id → { lavka: slug/url, vkusvill: xml_id, ... }` в `
 | Файл | Назначение |
 |------|------------|
 | `docs/e-grocery-location.yaml` | Точка доставки: **Электросталь**, МО; сервисы `samokat`, `yandex_lavka`, `vkusvill`; `ozon_fresh` отложен |
-| `docs/e-grocery-basket-starter.yaml` | Стартовая корзина (7 позиций: молоко, яйца, морковь, тушёнка, батон, грудка, томатная пasta) |
+| `docs/e-grocery-basket-starter.yaml` | Стартовая корзина (7 позиций: молоко, яйца, морковь, тушёнка, батон, грудка, томатная паста) |
 
 Пакет `egrocery` читает эти пути по умолчанию, когда задан `JOB_AGENT_STORE` (или `EGROCERY_STORE`):
 
