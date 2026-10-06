@@ -5,8 +5,12 @@ $store = if ($env:JOB_AGENT_STORE) { $env:JOB_AGENT_STORE } else { "$env:USERPRO
 $python = Join-Path $repo ".venv\Scripts\python.exe"
 $log = Join-Path $store "search.log"
 
+function Add-SearchLogLine([string]$Line) {
+  Add-Content -Path $log -Value $Line -Encoding utf8
+}
+
 if (-not (Test-Path $python)) {
-  "ERROR: venv not found at $python" | Out-File -Append $log
+  Add-SearchLogLine "ERROR: venv not found at $python"
   exit 1
 }
 
