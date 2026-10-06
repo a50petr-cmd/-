@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from egrocery.geocode import geocode_address_with_warning
 from egrocery.loaders import load_location
 from egrocery.models import Location
 
@@ -183,8 +184,9 @@ def save_user_delivery_point(
         doc["lon"] = lon
     elif existing.get("lon") is not None:
         doc["lon"] = existing["lon"]
-    if geocode_warning:
-        doc["geocode_warning"] = geocode_warning
+    if geocode_warning is not None:
+        if geocode_warning:
+            doc["geocode_warning"] = geocode_warning
     elif existing.get("geocode_warning"):
         doc["geocode_warning"] = existing["geocode_warning"]
     save_user_delivery_doc(user_yaml_path(store_root, chat_id), doc)
@@ -197,6 +199,35 @@ def save_user_delivery_point(
         updated_at=now,
         city=resolved_city,
         geocode_warning=geocode_warning,
+    )
+
+
+def ensure_delivery_point_geocoded(
+    store_root: Path,
+    chat_id: int,
+    point: DeliveryPoint,
+    location_path: Path,
+) -> DeliveryPoint:
+    """If user has address text but no coordinates, retry geocoding once."""
+    if point.has_coordinates() or not point.address_text:
+        return point
+    location = load_location(location_path)
+    result, warning = geocode_address_with_warning(
+        point.address_text,
+        city=point.city or location.city,
+        region=location.region,
+        country=location.country,
+    )
+    if result is None:
+        return point
+    return save_user_delivery_point(
+        store_root,
+        chat_id,
+        address_text=point.address_text,
+        lat=result.lat,
+        lon=result.lon,
+        city=result.city or point.city,
+        geocode_warning=warning if warning else "",
     )
 
 

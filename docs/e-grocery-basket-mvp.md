@@ -124,7 +124,8 @@ P0: маппинг `item.id → { lavka: slug/url, vkusvill: xml_id, ... }` в `
 - Команды: `/start`, `/address` (текст или геопозиция 📍), `/basket` (таблица для **этого чата**).
 - Профиль доставки на `chat_id`: `{JOB_AGENT_STORE}/internal/egrocery/users/{chat_id}.yaml`  
   (`address_text`, `lat`, `lon`, `city`, `updated_at`; город по умолчанию **Электросталь**).
-- Текстовый адрес → Yandex Geocoder, если задан `YANDEX_GEOCODER_API_KEY`; иначе сохраняется текст + предупреждение в ответе.
+- Текстовый адрес → **Yandex Geocoder**, если задан `YANDEX_GEOCODER_API_KEY`; иначе **OpenStreetMap Nominatim** (без отдельного ключа). При `/basket`, если есть `address_text`, но нет `lat`/`lon`, геокодирование повторяется один раз.
+- User-Agent для Nominatim: env `NOMINATIM_USER_AGENT` или значение по умолчанию `egrocery-bot/0.1 contact@example.com`.
 - CLI для отладки: `python -m egrocery basket --chat-id <id>` или `--lat` / `--lon`.
 - Живые цены Samokat / Lavka / VkusVill — **заглушки** (`—`); в лог пишется, какая geo использовалась.
 
@@ -249,20 +250,35 @@ python -m egrocery basket
 
    ```env
    EGROCERY_BOT_TOKEN=123456:ABC-DEF...
-   # опционально, для текста → координаты:
+   # опционально (иначе Nominatim / OSM):
    YANDEX_GEOCODER_API_KEY=ваш-ключ
+   # опционально для Nominatim:
+   # NOMINATIM_USER_AGENT=egrocery-bot/0.1 you@example.com
    ```
 
 3. Запуск из корня репозитория (venv с `pip install -r requirements.txt`):
 
+   **PowerShell:**
+
    ```powershell
    $env:JOB_AGENT_STORE = "$HOME\job-agent-store"
+   .\.venv\Scripts\Activate.ps1
    python -m egrocery bot
    ```
 
+   **Git Bash:**
+
+   ```bash
+   bash scripts/run-egrocery-bot.sh
+   ```
+
+   Скрипт сам делает `source .venv/Scripts/activate` и выставляет `JOB_AGENT_STORE` (по умолчанию `$HOME/job-agent-store`).
+
 4. В Telegram: `/address` → адрес текстом или «Поделиться геолокацией» → `/basket`.
 
-Переменные окружения (альтернатива secrets.env): `EGROCERY_BOT_TOKEN`, `JOB_AGENT_STORE`, `YANDEX_GEOCODER_API_KEY`.
+Переменные окружения (альтернатива secrets.env): `EGROCERY_BOT_TOKEN`, `JOB_AGENT_STORE`, `YANDEX_GEOCODER_API_KEY`, `NOMINATIM_USER_AGENT`.
+
+**Сеть:** ошибки вида `SSL: WRONG_VERSION_NUMBER` или таймаут при `getUpdates` — обычно временные проблемы сети/VPN/прокси между Windows и `api.telegram.org`, не баг бота. Подождите и перезапустите.
 
 **Заглушки цен (P0):** `fetch_prices_samokat` / `lavka` / `vkusvill` в `egrocery/providers.py` возвращают `—` до подключения API; Ozon Fresh по-прежнему в `services_deferred`.
 

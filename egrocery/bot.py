@@ -11,7 +11,9 @@ from typing import Any
 from egrocery.basket_service import build_basket_markdown
 from egrocery.config import get_bot_token, get_store_root
 from egrocery.delivery_point import save_user_delivery_point
-from egrocery.geocode import geocode_address_yandex, get_yandex_geocoder_api_key
+from egrocery.geocode import geocode_address_with_warning
+from egrocery.loaders import load_location
+from egrocery.models import Location
 
 logger = logging.getLogger(__name__)
 
@@ -81,34 +83,27 @@ class TelegramBot:
 
     def save_address_text(self, chat_id: int, address: str) -> None:
         store = get_store_root()
-        warning: str | None = None
-        lat: float | None = None
-        lon: float | None = None
-        city: str | None = None
-        if get_yandex_geocoder_api_key():
-            try:
-                result = geocode_address_yandex(address)
-            except urllib.error.URLError as exc:
-                logger.warning("geocode failed: %s", exc)
-                result = None
-                warning = (
-                    "Геокодер недоступен — сохранён только текст адреса. "
-                    "Можно отправить геопозицию."
-                )
-            else:
-                if result:
-                    lat, lon = result.lat, result.lon
-                    city = result.city
-                else:
-                    warning = (
-                        "Адрес не распознан геокодером — сохранён текст. "
-                        "Пришлите геопозицию для точных цен."
-                    )
+        location_path = store / "docs" / "e-grocery-location.yaml"
+        if location_path.is_file():
+            location = load_location(location_path)
         else:
-            warning = (
-                "YANDEX_GEOCODER_API_KEY не задан — сохранён текст адреса без координат. "
-                "Можно отправить геопозицию или добавить ключ в secrets.env."
+            location = Location(
+                city="Электросталь",
+                region="Московская область",
+                country="RU",
+                services_enabled=("samokat", "yandex_lavka", "vkusvill"),
+                services_deferred=("ozon_fresh",),
             )
+        result, warning = geocode_address_with_warning(
+            address.strip(),
+            city=location.city,
+            region=location.region,
+            country=location.country,
+        )
+        lat: float | None = result.lat if result else None
+        lon: float | None = result.lon if result else None
+        city: str | None = result.city if result else None
+        geocode_warning: str | None = warning if warning else ("" if result else None)
         point = save_user_delivery_point(
             store,
             chat_id,
@@ -116,11 +111,15 @@ class TelegramBot:
             lat=lat,
             lon=lon,
             city=city,
-            geocode_warning=warning,
+            geocode_warning=geocode_warning,
         )
         self.pending_address.discard(chat_id)
         lines = [f"Адрес сохранён: {point.geo_summary()}"]
-        if warning:
+        if result:
+            lines.append(
+                f"Координаты найдены ({result.source}): {result.lat:.5f}, {result.lon:.5f}."
+            )
+        elif warning:
             lines.append(warning)
         lines.append("Вызовите /basket для сравнения.")
         self.send_message(chat_id, "\n".join(lines))

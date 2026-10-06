@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from egrocery.config import get_basket_path, get_location_path, get_store_root
-from egrocery.delivery_point import resolve_delivery_point
+from egrocery.delivery_point import ensure_delivery_point_geocoded, resolve_delivery_point
 from egrocery.loaders import load_basket
 from egrocery.providers import fetch_all_provider_prices
 from egrocery.table import format_basket_table
@@ -27,6 +27,8 @@ def build_basket_markdown(
         lat=lat,
         lon=lon,
     )
+    if chat_id is not None and lat is None and lon is None:
+        point = ensure_delivery_point_geocoded(store, chat_id, point, loc_path)
     basket = load_basket(basket_p)
     prices_by_service = fetch_all_provider_prices(point, basket)
     return format_basket_table(point, basket, prices_by_service=prices_by_service)
