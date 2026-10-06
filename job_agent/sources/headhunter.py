@@ -55,9 +55,9 @@ class HeadHunterSource(VacancySource):
             if resp.status_code == 403:
                 log.warning(
                     "HH API вернул 403 (часто блокировка IP/регистрация). "
-                    "Используйте --use-fixtures или запуск с домашней сети."
+                    "Запустите search с домашней сети или укажите --use-fixtures для теста."
                 )
-                return self._from_fixture(limit)
+                return []
             resp.raise_for_status()
             data = resp.json()
         except requests.RequestException as exc:
