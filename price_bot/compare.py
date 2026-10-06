@@ -33,7 +33,18 @@ def compare_url(url: str, *, demo: bool | None = None) -> ComparisonResult:
         source = source_client.fetch_product(parsed.product_id, parsed.canonical_url)
         source.is_source = True
     except FetchError as exc:
-        raise ValueError(str(exc)) from exc
+        return ComparisonResult(
+            source=ProductListing(
+                platform=parsed.platform,
+                product_id=parsed.product_id,
+                title="Не удалось загрузить карточку исходного товара",
+                price_rub=None,
+                url=parsed.canonical_url,
+                is_source=True,
+            ),
+            matches=[],
+            errors=[str(exc)],
+        )
 
     query = title_keywords(source.title)
     matches: list[MatchedListing] = []

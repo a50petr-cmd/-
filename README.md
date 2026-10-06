@@ -12,3 +12,5 @@ python -m price_bot bot        # long polling
 ```
 
 See project docs: `price-bot-mvp.md` in Cursor Project store (`docs/`).
+
+**Troubleshooting:** `git pull` branch `cursor/price-telegram-bot-mvp` (commit `a2697f7+`), set `JOB_AGENT_STORE` to your local store on Windows, WB 403 → HTML/API fallback — details in store doc `docs/price-bot-mvp.md`.

@@ -7,7 +7,7 @@ from typing import Any
 import requests
 
 from price_bot.compare import compare_url
-from price_bot.config import get_bot_token
+from price_bot.config import get_bot_token, get_secrets_path, get_store_root
 from price_bot.formatters import format_comparison_message
 from price_bot.url_parser import parse_product_url
 
@@ -124,9 +124,11 @@ def run_bot() -> None:
     )
     token = get_bot_token()
     if not token:
+        secrets_path = get_secrets_path()
+        store_root = get_store_root()
         raise SystemExit(
             "Set PRICE_BOT_TOKEN (recommended) or TELEGRAM_BOT_TOKEN in env, "
-            "or in {store}/internal/secrets.env "
-            "(set JOB_AGENT_STORE or PRICE_BOT_STORE to your store root)."
+            f"or add it to {secrets_path} "
+            f"(store root: {store_root}; set JOB_AGENT_STORE or PRICE_BOT_STORE if needed)."
         )
     TelegramBot(token).run_polling()
