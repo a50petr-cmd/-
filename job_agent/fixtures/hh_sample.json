@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": "123456789",
+      "name": "Python backend developer",
+      "alternate_url": "https://hh.ru/vacancy/123456789",
+      "published_at": "2026-10-05T10:00:00+0300",
+      "area": {"name": "Москва"},
+      "employer": {"name": "Пример Tech"},
+      "salary": {"from": 250000, "to": 350000, "currency": "RUR"},
+      "snippet": {
+        "requirement": "Опыт Python, FastAPI, PostgreSQL, Docker.",
+        "responsibility": "Разработка микросервисов, code review."
+      }
+    },
+    {
+      "id": "987654321",
+      "name": "Junior стажёр 1С",
+      "alternate_url": "https://hh.ru/vacancy/987654321",
+      "published_at": "2026-10-04T09:00:00+0300",
+      "area": {"name": "Санкт-Петербург"},
+      "employer": {"name": "Legacy Corp"},
+      "salary": null,
+      "snippet": {
+        "requirement": "Без опыта, стажёр.",
+        "responsibility": "1С программирование."
+      }
+    }
+  ]
+}
