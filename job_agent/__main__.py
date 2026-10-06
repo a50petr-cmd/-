@@ -60,9 +60,23 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
 
 def cmd_telegram_test(_args: argparse.Namespace) -> int:
-    from job_agent.telegram_notifier import send_message
+    from job_agent.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    from job_agent.telegram_notifier import resolve_chat_id_from_updates, send_message
 
+    if not TELEGRAM_BOT_TOKEN:
+        print("TELEGRAM_BOT_TOKEN не задан (env или internal/secrets.env)")
+        return 1
+    chat_id = TELEGRAM_CHAT_ID or resolve_chat_id_from_updates(TELEGRAM_BOT_TOKEN)
+    if chat_id and not TELEGRAM_CHAT_ID:
+        print(f"Найден chat_id из getUpdates: {chat_id}")
+        print("Добавьте в internal/secrets.env: TELEGRAM_CHAT_ID=" + chat_id)
+    elif TELEGRAM_CHAT_ID:
+        print(f"Используется TELEGRAM_CHAT_ID={TELEGRAM_CHAT_ID}")
+    else:
+        print("chat_id не найден. Откройте @HH_Alekseev_bot и нажмите /start, затем повторите команду.")
+        return 1
     ok = send_message("PetroJobAgent: тестовое сообщение. Пайплайн поиска работы активен.")
+    print("Сообщение отправлено." if ok else "Не удалось отправить сообщение.")
     return 0 if ok else 1
 
 

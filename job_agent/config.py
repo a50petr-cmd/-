@@ -3,7 +3,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+
+def _load_dotenv_file(path: Path) -> None:
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 DEFAULT_STORE_ROOT = Path(os.environ.get("JOB_AGENT_STORE", "/cursor/stores/self"))
+_load_dotenv_file(DEFAULT_STORE_ROOT / "internal" / "secrets.env")
 PROFILE_YAML = DEFAULT_STORE_ROOT / "docs" / "profile.yaml"
 PROFILE_MD = DEFAULT_STORE_ROOT / "docs" / "job-search-profile.md"
 PENDING_DIR = DEFAULT_STORE_ROOT / "internal" / "pending-applications"
