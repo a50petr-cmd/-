@@ -1,0 +1,20 @@
+# Локальный Postgres для «Копилки». Пароль только для машины разработчика.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kopilka
+      POSTGRES_PASSWORD: kopilka
+      POSTGRES_DB: kopilka
+    ports:
+      - "5432:5432"
+    volumes:
+      - kopilka_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kopilka -d kopilka"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kopilka_pg:
