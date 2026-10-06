@@ -8,6 +8,7 @@ import requests
 
 from price_bot.compare import compare_url
 from price_bot.config import get_bot_token, get_secrets_path, get_store_root
+from price_bot.telegram_validate import verify_bot_token_getme
 from price_bot.formatters import format_comparison_message
 from price_bot.url_parser import parse_product_url
 
@@ -131,4 +132,5 @@ def run_bot() -> None:
             f"or add it to {secrets_path} "
             f"(store root: {store_root}; set JOB_AGENT_STORE or PRICE_BOT_STORE if needed)."
         )
+    verify_bot_token_getme(token)
     TelegramBot(token).run_polling()

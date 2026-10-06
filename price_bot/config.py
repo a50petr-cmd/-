@@ -33,26 +33,40 @@ def get_secrets_path() -> Path:
     return get_store_root() / "internal" / "secrets.env"
 
 
+def _strip_env_value(value: str) -> str:
+    return value.strip().strip('"').strip("'").rstrip("\r")
+
+
 def load_dotenv_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     out: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
+        line = line.strip().rstrip("\r")
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        out[key.strip()] = value.strip().strip('"').strip("'")
+        out[key.strip().rstrip("\r")] = _strip_env_value(value)
     return out
 
 
 def get_bot_token() -> str | None:
-    token = os.environ.get("PRICE_BOT_TOKEN")
-    if token:
-        return token
+    from price_bot.telegram_validate import normalize_bot_token
+
+    raw = os.environ.get("PRICE_BOT_TOKEN")
+    if raw is not None and raw.strip():
+        return normalize_bot_token(raw)
     # Local fallback only: shared secrets file (do not commit).
     file_env = load_dotenv_file(get_secrets_path())
-    return file_env.get("PRICE_BOT_TOKEN") or file_env.get("TELEGRAM_BOT_TOKEN")
+    if "PRICE_BOT_TOKEN" in file_env:
+        price_token = file_env["PRICE_BOT_TOKEN"]
+        if price_token:
+            return normalize_bot_token(price_token)
+        return None
+    fallback = file_env.get("TELEGRAM_BOT_TOKEN")
+    if fallback:
+        return normalize_bot_token(fallback)
+    return None
 
 
 def get_default_chat_id() -> str | None:
