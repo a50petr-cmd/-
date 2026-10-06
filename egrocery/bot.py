@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from typing import Any
+
+import requests
+from requests.exceptions import RequestException
 
 from egrocery.basket_service import build_basket_markdown
 from egrocery.search_service import build_search_markdown
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 MAX_MESSAGE_LEN = 4000
-BOT_BUILD = "2026-03-24-deadlock-fix"
+BOT_BUILD = "2026-03-24-py314-telegram"
 
 
 def _handler_max_sec() -> float:
@@ -45,18 +44,16 @@ class TelegramBot:
         method: str,
         payload: dict[str, Any] | None = None,
         *,
-        timeout: float | tuple[float, float] = 20.0,
+        read_timeout: float = 25.0,
     ) -> dict[str, Any]:
         url = TELEGRAM_API.format(token=self.token, method=method)
-        data = json.dumps(payload or {}).encode("utf-8")
-        req = urllib.request.Request(
+        resp = requests.post(
             url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+            json=payload or {},
+            timeout=(10.0, read_timeout),
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        resp.raise_for_status()
+        body = resp.json()
         if not body.get("ok"):
             raise RuntimeError(f"Telegram API {method} failed: {body}")
         return body["result"]
@@ -266,7 +263,7 @@ class TelegramBot:
     def run_polling(self, *, timeout: int = 30) -> None:
         logger.info("Connecting to Telegram (getMe)…")
         try:
-            me = self._api("getMe", timeout=(8.0, 20.0))
+            me = self._api("getMe", read_timeout=20.0)
             logger.info(
                 "Polling started as @%s build=%s (long poll %ss — пауза без логов нормальна)",
                 me.get("username"),
@@ -285,20 +282,17 @@ class TelegramBot:
             elif drop_pending:
                 params["drop_pending_updates"] = True
                 drop_pending = False
-            url = TELEGRAM_API.format(token=self.token, method="getUpdates")
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(params).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            read_timeout = float(timeout) + 15.0
+            read_timeout = float(timeout) + 20.0
             try:
-                with urllib.request.urlopen(
-                    req, timeout=(10.0, read_timeout)
-                ) as resp:
-                    body = json.loads(resp.read().decode("utf-8"))
-            except urllib.error.URLError as exc:
+                url = TELEGRAM_API.format(token=self.token, method="getUpdates")
+                resp = requests.post(
+                    url,
+                    json=params,
+                    timeout=(10.0, read_timeout),
+                )
+                resp.raise_for_status()
+                body = resp.json()
+            except RequestException as exc:
                 logger.warning("getUpdates error: %s", exc)
                 time.sleep(3)
                 continue
