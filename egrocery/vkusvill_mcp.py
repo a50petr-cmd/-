@@ -69,7 +69,7 @@ def search_products(query: str, *, limit: int = 10) -> list[Offer]:
         {
             "q": query,
             "page": 1,
-            "sort": "price_asc",
+            "sort": "popularity",
             "mode": "short",
         },
     )
