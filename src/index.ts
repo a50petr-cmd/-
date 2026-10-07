@@ -1,7 +1,7 @@
 import { runDigest, setPaused } from "./digest.ts";
 import { profile } from "./profile.ts";
 import { readSettings, type Settings, type Store } from "./store.ts";
-import { helpText, sendTelegram } from "./telegram.ts";
+import { commandFromText, helpText, publishCommands, sendTelegram } from "./telegram.ts";
 
 export interface Env {
   JOBS: KVNamespace;
@@ -62,10 +62,6 @@ async function deliver(env: Env, force: boolean): Promise<void> {
   });
 }
 
-function commandOf(text: string): string {
-  return (text.trim().split(/\s+/)[0] ?? "").split("@")[0].toLowerCase();
-}
-
 async function handleMessage(env: Env, update: TelegramUpdate): Promise<void> {
   const text = update.message?.text?.trim() ?? "";
   const chatId = update.message?.chat?.id;
@@ -74,7 +70,7 @@ async function handleMessage(env: Env, update: TelegramUpdate): Promise<void> {
   const send = (message: string) => sendTelegram(env.TELEGRAM_BOT_TOKEN, chat, message);
   const store = storeOf(env);
   const owner = await ownerChat(store, env);
-  const command = commandOf(text);
+  const command = commandFromText(text);
 
   if (owner && owner !== chat) {
     await send("Этот бот уже привязан к другому чату.");
@@ -88,6 +84,7 @@ async function handleMessage(env: Env, update: TelegramUpdate): Promise<void> {
   if (command === "/start") {
     if (!env.OWNER_CHAT_ID) await store.put("owner", chat);
     await send(`Чат подключён. Идентификатор: ${chat}\n\n${helpText}`);
+    await publishCommands(env.TELEGRAM_BOT_TOKEN).catch(() => undefined);
     return;
   }
   if (command === "/help") {
@@ -101,7 +98,7 @@ async function handleMessage(env: Env, update: TelegramUpdate): Promise<void> {
   }
   if (command === "/resume") {
     await setPaused(store, false);
-    await send("Ежедневная рассылка включена: по рабочим дням в 09:00 мск.");
+    await send("Ежедневная рассылка включена: по рабочим дням в 10:00 мск.");
     return;
   }
   if (command === "/status") {

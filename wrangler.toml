@@ -2,9 +2,9 @@ name = "alekseev-job-bot"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-# 06:00 UTC = 09:00 Москва, понедельник–пятница.
+# 07:00 UTC = 10:00 Москва, понедельник–пятница.
 [triggers]
-crons = ["0 6 * * 1-5"]
+crons = ["0 7 * * 1-5"]
 
 # id подставляется после `npm run kv`.
 [[kv_namespaces]]

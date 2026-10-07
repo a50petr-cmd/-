@@ -34,30 +34,67 @@ export function formatRunSummary(dateLabel: string, reports: SourceReport[], sen
   return [`Подборка на ${dateLabel}. Новых вакансий: ${sent}.`, "", ...lines].join("\n");
 }
 
+export const commandKeyboard = {
+  keyboard: [
+    [{ text: "Найти вакансии" }, { text: "Статус" }],
+    [{ text: "Пауза" }, { text: "Включить" }],
+    [{ text: "Справка" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
+const buttonCommands: Record<string, string> = {
+  "найти вакансии": "/search",
+  статус: "/status",
+  пауза: "/pause",
+  включить: "/resume",
+  справка: "/help",
+};
+
+export function commandFromText(text: string): string {
+  const trimmed = text.trim();
+  const button = buttonCommands[trimmed.toLowerCase()];
+  if (button) return button;
+  return (trimmed.split(/\s+/)[0] ?? "").split("@")[0].toLowerCase();
+}
+
 export async function sendTelegram(token: string, chatId: string, text: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const payload = {
+    chat_id: chatId,
+    link_preview_options: { is_disabled: true },
+    reply_markup: commandKeyboard,
+  };
   const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-    }),
+    body: JSON.stringify({ ...payload, text, parse_mode: "HTML" }),
   });
   if (response.ok) return;
   const plain = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: text.replace(/<[^>]+>/g, ""),
-      link_preview_options: { is_disabled: true },
-    }),
+    body: JSON.stringify({ ...payload, text: text.replace(/<[^>]+>/g, "") }),
   });
   if (!plain.ok) {
     throw new Error(`Telegram ${plain.status}`);
   }
+}
+
+export async function publishCommands(token: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  await fetchImpl(`https://api.telegram.org/bot${token}/setMyCommands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      commands: [
+        { command: "search", description: "Найти вакансии сейчас" },
+        { command: "status", description: "Состояние рассылки" },
+        { command: "pause", description: "Остановить ежедневную рассылку" },
+        { command: "resume", description: "Включить рассылку" },
+        { command: "help", description: "Справка" },
+      ],
+    }),
+  });
 }
 
 export const helpText = [
@@ -70,7 +107,8 @@ export const helpText = [
   "/resume — включить рассылку",
   "/help — эта справка",
   "",
-  "По рабочим дням в 09:00 мск присылаю до 5 новых вакансий и письмо к каждой.",
+  "Кнопки под полем ввода вызывают те же команды.",
+  "По рабочим дням в 10:00 мск присылаю до 5 новых вакансий и письмо к каждой.",
   "Площадки: hh.ru, Зарплата.ру, Работа России, Хабр Карьера. SuperJob подключается ключом API.",
   "Отклик на вакансию сам не отправляю.",
 ].join("\n");
