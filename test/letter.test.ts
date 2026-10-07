@@ -21,32 +21,26 @@ const vacancy: ScoredVacancy = {
   remote: true,
 };
 
-test("letter uses the vacancy and a matching achievement without inventing a phone", () => {
+test("letter is short, names the vacancy, and keeps a real result", () => {
   const letter = coverLetter(vacancy, { telegram: "https://t.me/PetroAlekseev" });
   assert.match(letter, /Север Импорт/);
   assert.match(letter, /Операционный директор \(COO\)/);
-  assert.match(letter, /В описании роли для меня главное: Нужен руководитель импортных поставок/);
   assert.match(letter, /X5 Group/);
   assert.match(letter, /10–15%/);
   assert.match(letter, /t\.me\/PetroAlekseev/);
+  assert.doesNotMatch(letter, /для меня главное/);
+  assert.doesNotMatch(letter, /Нужен руководитель импортных поставок/);
+  assert.ok(letter.length < 800);
   assert.doesNotMatch(letter, /\+7/);
   assert.doesNotMatch(letter, /@/);
 });
 
-test("focus starts at the task list and does not cut a word", () => {
-  const letter = coverLetter(
-    {
-      ...vacancy,
-      description: `Компания производит оборудование. Ваши задачи: формирование стратегии развития производственных мощностей и защита инвестиционных проектов CAPEX на расширение цеха.`,
-    },
-    { telegram: "https://t.me/PetroAlekseev" },
-  );
-  assert.match(letter, /В описании роли для меня главное: Ваши задачи: формирование стратегии/);
-  assert.doesNotMatch(letter, /Компания производит оборудование/);
-});
-
 test("letter adds phone and email only from contacts", () => {
-  const letter = coverLetter(vacancy, { phone: "+7 000 000-00-00", email: "person@example.com", telegram: "https://t.me/PetroAlekseev" });
+  const letter = coverLetter(vacancy, {
+    phone: "+7 000 000-00-00",
+    email: "person@example.com",
+    telegram: "https://t.me/PetroAlekseev",
+  });
   assert.match(letter, /\+7 000 000-00-00/);
   assert.match(letter, /person@example.com/);
 });
