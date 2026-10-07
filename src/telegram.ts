@@ -13,7 +13,8 @@ export function formatVacancyMessages(vacancy: ScoredVacancy, letter: string): s
   const place = [vacancy.company, vacancy.city || vacancy.region, SOURCE_LABEL[vacancy.source]].filter(Boolean);
   const lines = [`<b>${escapeHtml(vacancy.title)}</b>`, escapeHtml(place.join(" · "))];
   if (vacancy.salary) lines.push(escapeHtml(vacancy.salary));
-  if (vacancy.workFormat) lines.push(escapeHtml(`Формат: ${vacancy.workFormat}`));
+  const workFormat = vacancy.workFormat.replace(/<[^>]*>?/g, " ").replace(/\s+/g, " ").trim();
+  if (workFormat && !workFormat.includes("<")) lines.push(escapeHtml(`Формат: ${workFormat}`));
   lines.push(`<a href="${escapeHtml(vacancy.url)}">Открыть вакансию</a>`);
   const head = lines.join("\n");
   const body = `<b>Сопроводительное письмо</b>\n\n${escapeHtml(letter)}`;

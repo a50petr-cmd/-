@@ -131,10 +131,13 @@ export function parseJobPosting(html: string): JobPosting | null {
 export function extractWorkFormat(html: string): string {
   const index = html.search(/Формат работы/i);
   if (index < 0) return "";
-  const text = htmlToText(html.slice(index, index + 500)).replace(/\s+/g, " ");
+  const slice = html.slice(index, index + 400);
+  const end = slice.search(/<\/p>|<div|<span class="noprint"/i);
+  const chunk = (end > 0 ? slice.slice(0, end) : slice).replace(/<[^>]*>/g, " ").replace(/<[^>]*$/g, " ");
+  const text = decodeEntities(chunk).replace(/\s+/g, " ").trim();
   const match = text.match(/Формат работы:?\s*(.+)/i);
   if (!match) return "";
-  return match[1].split(/Сейчас эту|Опыт работы|Занятость|График/)[0].trim().slice(0, 180);
+  return match[1].split(/Сейчас эту|Опыт работы|Занятость|График/)[0].trim().slice(0, 80);
 }
 
 export function vacancyIdFromUrl(url: string): string {

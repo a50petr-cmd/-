@@ -26,5 +26,11 @@ test("reads job posting and work format", () => {
   assert.equal(job?.city, "Москва");
   assert.match(job?.description ?? "", /Импорт и логистика/);
   assert.match(extractWorkFormat(html), /гибрид/);
+  assert.equal(
+    extractWorkFormat(
+      `<p>Формат работы: на месте работодателя</p><div class="vacancy-actions vacancy-actions_applicant vacancy-actions_magritte-vacancy">x</div>`,
+    ),
+    "на месте работодателя",
+  );
   assert.equal(pickCompany(job?.company ?? "", "SIBERIA"), "SIBERIA");
 });
