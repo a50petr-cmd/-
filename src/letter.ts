@@ -47,7 +47,7 @@ export function coverLetter(vacancy: ScoredVacancy, contacts: Contacts): string 
     `Меня зовут ${profile.shortName}. Откликаюсь на «${vacancy.title}»${company}.`,
     "",
     lead?.text ?? "",
-    ...(extra ? [extra.text] : []),
+    ...(extra ? ["", extra.text] : []),
     "",
     closing(vacancy),
     "",
