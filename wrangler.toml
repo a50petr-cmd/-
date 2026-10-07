@@ -2,10 +2,6 @@ name = "alekseev-job-bot"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-# Разбор страниц вакансий не укладывается в лимит CPU бесплатного тарифа.
-[limits]
-cpu_ms = 30000
-
 # 06:00 UTC = 09:00 Москва, понедельник–пятница.
 [triggers]
 crons = ["0 6 * * 1-5"]
