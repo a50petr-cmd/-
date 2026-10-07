@@ -47,16 +47,16 @@ function boardVacancy(source: SourceId, host: string, item: { title: string; lin
   };
 }
 
-function rssUrl(origin: string, text: string, area: string, remote: boolean): string {
+function rssUrl(origin: string, query: BoardQuery): string {
   const url = new URL("/search/vacancy/rss", origin);
-  url.searchParams.set("text", text);
+  url.searchParams.set("text", query.text);
   url.searchParams.set("search_field", "name");
-  url.searchParams.set("area", area);
+  url.searchParams.set("area", query.area);
   url.searchParams.set("search_period", "14");
   url.searchParams.set("order_by", "publication_time");
   url.searchParams.set("employment", "full");
-  url.searchParams.set("experience", "moreThan6");
-  if (remote) {
+  if (query.experience) url.searchParams.set("experience", query.experience);
+  if (query.remote) {
     url.searchParams.append("work_format", "REMOTE");
     url.searchParams.append("work_format", "HYBRID");
   }
@@ -67,13 +67,13 @@ async function readBoard(
   fetchImpl: FetchLike,
   source: SourceId,
   origin: string,
-  queries: Array<{ text: string; area: string; remote: boolean }>,
+  queries: BoardQuery[],
 ): Promise<{ report: SourceReport; vacancies: Vacancy[] }> {
   const vacancies: Vacancy[] = [];
   const errors: string[] = [];
   for (const query of queries) {
     try {
-      const xml = await fetchText(fetchImpl, rssUrl(origin, query.text, query.area, query.remote));
+      const xml = await fetchText(fetchImpl, rssUrl(origin, query));
       for (const item of parseRssItems(xml)) vacancies.push(boardVacancy(source, origin, item));
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
@@ -90,21 +90,39 @@ async function readBoard(
   };
 }
 
-export function hhQueries(): Array<{ text: string; area: string; remote: boolean }> {
-  const main = ["операционный директор", "COO"];
-  const extra = ["директор по операционной деятельности", "Head of Operations"];
+export type BoardQuery = {
+  text: string;
+  area: string;
+  remote: boolean;
+  experience: string | null;
+};
+
+const RUSSIA = "113";
+
+function russiaQuery(text: string, experience: string | null): BoardQuery {
+  return { text, area: RUSSIA, remote: false, experience };
+}
+
+export function hhQueries(): BoardQuery[] {
   return [
-    ...[...main, ...extra].map((text) => ({ text, area: "1", remote: false })),
-    ...main.map((text) => ({ text, area: "2019", remote: false })),
-    ...main.map((text) => ({ text, area: "113", remote: true })),
+    russiaQuery("операционный директор", "moreThan6"),
+    russiaQuery("COO", "moreThan6"),
+    russiaQuery("директор по операционной деятельности", "moreThan6"),
+    russiaQuery("Head of Operations", "moreThan6"),
+    russiaQuery("операционный менеджер", null),
+    russiaQuery("менеджер операционных проектов", null),
+    russiaQuery("руководитель операционных проектов", null),
+    russiaQuery("менеджер проектов", null),
+    russiaQuery("руководитель проектов", null),
   ];
 }
 
-export function zarplataQueries(): Array<{ text: string; area: string; remote: boolean }> {
-  const main = ["операционный директор", "COO"];
+export function zarplataQueries(): BoardQuery[] {
   return [
-    ...main.map((text) => ({ text, area: "1", remote: false })),
-    ...main.map((text) => ({ text, area: "113", remote: true })),
+    russiaQuery("операционный директор", "moreThan6"),
+    russiaQuery("операционный менеджер", null),
+    russiaQuery("менеджер операционных проектов", null),
+    russiaQuery("менеджер проектов", null),
   ];
 }
 
@@ -153,25 +171,37 @@ export function mapTrudVacancy(raw: TrudVacancy): Vacancy | null {
   };
 }
 
+const TRUD_QUERIES = ["операционный директор", "менеджер операционных проектов", "менеджер проектов"];
+
 export async function searchTrudvsem(fetchImpl: FetchLike): Promise<{ report: SourceReport; vacancies: Vacancy[] }> {
-  const url = new URL("https://opendata.trudvsem.ru/api/v1/vacancies/region/7700000000000");
-  url.searchParams.set("text", "операционный директор");
-  url.searchParams.set("offset", "0");
-  url.searchParams.set("limit", "20");
-  try {
-    const payload = JSON.parse(await fetchText(fetchImpl, url.toString())) as {
-      results?: { vacancies?: Array<{ vacancy?: TrudVacancy }> };
-    };
-    const vacancies = (payload.results?.vacancies ?? [])
-      .map((row) => (row.vacancy ? mapTrudVacancy(row.vacancy) : null))
-      .filter((item): item is Vacancy => item !== null);
-    return { report: { source: "Работа России", ok: true, count: vacancies.length }, vacancies };
-  } catch (error) {
-    return {
-      report: { source: "Работа России", ok: false, count: 0, error: error instanceof Error ? error.message : String(error) },
-      vacancies: [],
-    };
+  const vacancies: Vacancy[] = [];
+  const errors: string[] = [];
+  for (const text of TRUD_QUERIES) {
+    const url = new URL("https://opendata.trudvsem.ru/api/v1/vacancies");
+    url.searchParams.set("text", text);
+    url.searchParams.set("offset", "0");
+    url.searchParams.set("limit", "20");
+    try {
+      const payload = JSON.parse(await fetchText(fetchImpl, url.toString())) as {
+        results?: { vacancies?: Array<{ vacancy?: TrudVacancy }> };
+      };
+      for (const row of payload.results?.vacancies ?? []) {
+        const vacancy = row.vacancy ? mapTrudVacancy(row.vacancy) : null;
+        if (vacancy) vacancies.push(vacancy);
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
   }
+  return {
+    report: {
+      source: "Работа России",
+      ok: errors.length < TRUD_QUERIES.length,
+      count: vacancies.length,
+      error: errors[0],
+    },
+    vacancies,
+  };
 }
 
 type HabrCard = {
@@ -210,7 +240,8 @@ export function mapHabrCard(card: HabrCard): Vacancy | null {
 export async function searchHabr(fetchImpl: FetchLike): Promise<{ report: SourceReport; vacancies: Vacancy[] }> {
   const vacancies: Vacancy[] = [];
   const errors: string[] = [];
-  for (const query of ["операционный директор", "COO"]) {
+  const queries = ["операционный директор", "менеджер проектов", "менеджер операционных проектов"];
+  for (const query of queries) {
     const url = new URL("https://career.habr.com/vacancies");
     url.searchParams.set("q", query);
     url.searchParams.set("type", "all");
@@ -228,7 +259,7 @@ export async function searchHabr(fetchImpl: FetchLike): Promise<{ report: Source
     }
   }
   return {
-    report: { source: "Хабр Карьера", ok: errors.length < 2, count: vacancies.length, error: errors[0] },
+    report: { source: "Хабр Карьера", ok: errors.length < queries.length, count: vacancies.length, error: errors[0] },
     vacancies,
   };
 }
@@ -281,21 +312,28 @@ export async function searchSuperjob(fetchImpl: FetchLike, apiKey: string | unde
   if (!apiKey) {
     return { report: { source: "SuperJob", ok: true, count: 0, error: "ключ API не задан" }, vacancies: [] };
   }
-  const url = new URL("https://api.superjob.ru/2.0/vacancies/");
-  url.searchParams.set("keyword", "операционный директор");
-  url.searchParams.set("town", "4");
-  url.searchParams.set("count", "20");
-  url.searchParams.set("period", "14");
-  try {
-    const payload = JSON.parse(await fetchText(fetchImpl, url.toString(), { "X-Api-App-Id": apiKey })) as { objects?: SuperjobItem[] };
-    const vacancies = (payload.objects ?? []).map(mapSuperjob).filter((item): item is Vacancy => item !== null);
-    return { report: { source: "SuperJob", ok: true, count: vacancies.length }, vacancies };
-  } catch (error) {
-    return {
-      report: { source: "SuperJob", ok: false, count: 0, error: error instanceof Error ? error.message : String(error) },
-      vacancies: [],
-    };
+  const keywords = ["операционный директор", "менеджер проектов", "менеджер операционных проектов"];
+  const vacancies: Vacancy[] = [];
+  const errors: string[] = [];
+  for (const keyword of keywords) {
+    const url = new URL("https://api.superjob.ru/2.0/vacancies/");
+    url.searchParams.set("keyword", keyword);
+    url.searchParams.set("count", "20");
+    url.searchParams.set("period", "14");
+    try {
+      const payload = JSON.parse(await fetchText(fetchImpl, url.toString(), { "X-Api-App-Id": apiKey })) as { objects?: SuperjobItem[] };
+      for (const item of payload.objects ?? []) {
+        const vacancy = mapSuperjob(item);
+        if (vacancy) vacancies.push(vacancy);
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
   }
+  return {
+    report: { source: "SuperJob", ok: errors.length < keywords.length, count: vacancies.length, error: errors[0] },
+    vacancies,
+  };
 }
 
 export async function enrichVacancy(fetchImpl: FetchLike, vacancy: Vacancy): Promise<Vacancy> {

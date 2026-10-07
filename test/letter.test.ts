@@ -35,6 +35,26 @@ test("letter is short, names the vacancy, and keeps a real result", () => {
   assert.doesNotMatch(letter, /@/);
 });
 
+test("letter for a store launch outside Moscow uses that experience", () => {
+  const letter = coverLetter(
+    {
+      ...vacancy,
+      title: "Менеджер проектов",
+      company: "Сеть Юг",
+      city: "Краснодар",
+      region: "Краснодарский край",
+      workFormat: "на месте работодателя",
+      description: "Запуск розничных магазинов франшизы.",
+      remote: false,
+    },
+    { telegram: "https://t.me/PetroAlekseev" },
+  );
+  assert.match(letter, /Фасоль|Пятёрочка/);
+  assert.match(letter, /командировк/);
+  assert.doesNotMatch(letter, /Переезд не рассматриваю/);
+  assert.ok(letter.length < 800);
+});
+
 test("letter adds phone and email only from contacts", () => {
   const letter = coverLetter(vacancy, {
     phone: "+7 000 000-00-00",

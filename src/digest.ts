@@ -47,7 +47,7 @@ export async function runDigest(options: {
       store: options.store,
       now,
       periodDays: settings.periodDays,
-      enrichLimit: Math.max(settings.limit, 8),
+      enrichLimit: Math.max(settings.limit * 2, 12),
       superjobKey: options.superjobKey,
     });
 

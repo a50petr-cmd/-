@@ -24,10 +24,13 @@ function selectAchievements(themes: Theme[]): Achievement[] {
 
 function closing(vacancy: ScoredVacancy): string {
   const moscow = /москва|московск/i.test(`${vacancy.city} ${vacancy.region}`);
-  if (!moscow && vacancy.remote) {
-    return "Могу вести роль удалённо из Москвы. Переезд не рассматриваю, к командировкам готов. Если отклик подойдёт, давайте созвонимся.";
+  if (moscow) {
+    return "Я в Москве, смотрю офис, гибрид и удалёнку. Если отклик подойдёт, давайте созвонимся.";
   }
-  return "Я в Москве, смотрю офис, гибрид и удалёнку. Если отклик подойдёт, давайте созвонимся.";
+  if (vacancy.remote) {
+    return "Могу вести роль удалённо из Москвы и приезжать в командировки. Если отклик подойдёт, давайте созвонимся.";
+  }
+  return "Я в Москве и готов к командировкам по России. Если формат роли подойдёт, давайте созвонимся.";
 }
 
 function signature(contacts: Contacts): string {

@@ -1,4 +1,4 @@
-import { isRecent, rankVacancies, titleScore } from "./match.ts";
+import { isAddedRole, isRecent, rankVacancies, titleScore } from "./match.ts";
 import { enrichVacancy, searchHabr, searchHh, searchSuperjob, searchTrudvsem, searchZarplata, type FetchLike } from "./sources.ts";
 import type { Store } from "./store.ts";
 import { normalizeKey } from "./text.ts";
@@ -96,8 +96,17 @@ export async function findVacancies(options: {
     vacancies = unseen;
   }
 
-  const enriched = await mapPool(vacancies.slice(0, options.enrichLimit), 3, (vacancy) => enrichVacancy(options.fetch, vacancy));
+  const enriched = await mapPool(pickForEnrich(vacancies, options.enrichLimit), 3, (vacancy) => enrichVacancy(options.fetch, vacancy));
   return { reports, vacancies: enriched };
+}
+
+export function pickForEnrich(vacancies: Vacancy[], limit: number): Vacancy[] {
+  const added = vacancies.filter((vacancy) => isAddedRole(vacancy.title));
+  const primary = vacancies.filter((vacancy) => !isAddedRole(vacancy.title));
+  const addedTake = Math.min(added.length, Math.ceil(limit / 2));
+  const primaryTake = Math.min(primary.length, limit - addedTake);
+  const extraAdded = Math.min(added.length - addedTake, limit - addedTake - primaryTake);
+  return [...primary.slice(0, primaryTake), ...added.slice(0, addedTake + extraAdded)];
 }
 
 export function selectMatches(

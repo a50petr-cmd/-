@@ -7,7 +7,7 @@ const found = await findVacancies({
   fetch,
   now,
   periodDays: 14,
-  enrichLimit: 8,
+  enrichLimit: 12,
   superjobKey: process.env.SUPERJOB_API_KEY,
 });
 
